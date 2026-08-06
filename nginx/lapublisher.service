@@ -1,0 +1,52 @@
+# ==========================================================================
+#  /etc/systemd/system/lapublisher.service
+#
+#    sudo cp nginx/lapublisher.service /etc/systemd/system/
+#    sudo systemctl daemon-reload
+#    sudo systemctl enable --now lapublisher
+#
+#  ATENÇÃO — NÃO acrescente `MemoryDenyWriteExecute=yes` aqui. Ela mata o V8
+#  com `5/TRAP` poucos segundos depois de subir, e o sintoma parece queda de
+#  rede: o serviço sobe, responde uma ou duas vezes e morre. Já custou caro
+#  uma vez; não repetir.
+# ==========================================================================
+[Unit]
+Description=LA Publisher — publicação automática de postagens
+Documentation=file:///var/www/projetos/LA-Publisher/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/var/www/projetos/LA-Publisher
+ExecStart=/usr/bin/node server.js
+
+Environment=NODE_ENV=production
+Environment=PORT=5190
+# HOST fica no padrão (127.0.0.1): quem fala com o mundo é o nginx.
+# A chave do cofre é lida de data/.chave — não precisa de env.
+
+Restart=always
+RestartSec=3
+# Upload de 2 GB não pode ser interrompido por um `stop` apressado.
+TimeoutStopSec=90
+LimitNOFILE=8192
+
+# ---- endurecimento (o que NÃO quebra o Node) ----
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/var/www/projetos/LA-Publisher/data /var/www/projetos/LA-Publisher/midia
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=lapublisher
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,1240 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>LA Publisher — publicação automática</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap">
+<style>
+  :root{
+    --bg:#0d1020;--bg2:#12162b;--surface:#171c36;--surface2:#1e2442;--line:#2a3159;--line2:#3a4372;
+    --text:#e9ecfb;--muted:#a3abd8;--dim:#727ba9;
+    --violeta:#6c5cff;--violeta2:#8b7dff;--ciano:#22d3ee;--verde:#22c55e;--ambar:#f59e0b;--vermelho:#f43f5e;
+    --r:14px;--sombra:0 18px 44px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box;margin:0}
+  [hidden]{display:none!important}
+  body{font:15px/1.55 Outfit,system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+  h1,h2,h3,h4{line-height:1.25}
+  a{color:var(--ciano)}
+  button{font:inherit;cursor:pointer;color:inherit}
+  input,select,textarea{width:100%;padding:.6rem .75rem;font:inherit;color:var(--text);background:var(--bg2);
+    border:1.5px solid var(--line2);border-radius:10px}
+  input:focus,select:focus,textarea:focus,[contenteditable]:focus{outline:none;border-color:var(--violeta);
+    box-shadow:0 0 0 3px rgba(108,92,255,.25)}
+  select option{background:var(--bg2)}
+  textarea{resize:vertical;min-height:80px}
+  label{display:block;font-size:.76rem;font-weight:700;color:var(--muted);margin:.85rem 0 .3rem;letter-spacing:.02em}
+  .dica{font-size:.75rem;color:var(--dim);margin-top:.25rem}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:.45rem;padding:.6rem 1.15rem;border-radius:999px;
+    border:1.5px solid transparent;font-weight:700;white-space:nowrap}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn-p{background:linear-gradient(120deg,var(--violeta),#4b3ce6);color:#fff;box-shadow:0 6px 18px rgba(108,92,255,.35)}
+  .btn-p:hover:not(:disabled){filter:brightness(1.12)}
+  .btn-c{background:linear-gradient(120deg,var(--ciano),#0ea5b7);color:#04202a}
+  .btn-g{background:var(--surface2);border-color:var(--line2);color:var(--text)}
+  .btn-g:hover:not(:disabled){border-color:var(--violeta)}
+  .btn-d{background:rgba(244,63,94,.12);border-color:rgba(244,63,94,.4);color:#ffa7b8}
+  .btn-sm{padding:.35rem .8rem;font-size:.82rem}
+  .btn-xs{padding:.2rem .55rem;font-size:.75rem;border-radius:8px}
+
+  /* ---------------- login ---------------- */
+  #login{position:fixed;inset:0;display:grid;place-items:center;padding:1.5rem;z-index:60;
+    background:radial-gradient(1200px 600px at 15% -10%,rgba(108,92,255,.35),transparent 60%),
+               radial-gradient(900px 500px at 110% 110%,rgba(34,211,238,.22),transparent 55%),var(--bg)}
+  #login .card{width:min(400px,94vw);background:var(--surface);border:1px solid var(--line);border-radius:20px;
+    padding:2.2rem 2rem;box-shadow:var(--sombra)}
+  .marca{display:flex;align-items:center;gap:.6rem;font-weight:800;letter-spacing:-.02em}
+  .marca .ico{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:0 0 auto;
+    background:linear-gradient(135deg,var(--violeta),var(--ciano));color:#fff;font-size:1.05rem}
+  #login .marca{justify-content:center;font-size:1.3rem;margin-bottom:.3rem}
+  #login p.sub{text-align:center;color:var(--dim);font-size:.82rem;margin-bottom:1.4rem}
+
+  /* ---------------- estrutura ---------------- */
+  .app{display:grid;grid-template-columns:240px 1fr;min-height:100vh}
+  aside{background:var(--bg2);border-right:1px solid var(--line);padding:1.1rem .8rem;display:flex;flex-direction:column;
+    position:sticky;top:0;height:100vh;overflow:auto}
+  aside .marca{margin:.2rem .3rem 1.2rem;font-size:1.05rem}
+  .navbtn{display:flex;align-items:center;gap:.6rem;width:100%;text-align:left;padding:.6rem .8rem;border-radius:10px;
+    border:0;background:none;color:var(--muted);font-weight:600;margin-bottom:.15rem}
+  .navbtn:hover{background:rgba(255,255,255,.05);color:var(--text)}
+  .navbtn.on{background:linear-gradient(120deg,rgba(108,92,255,.9),rgba(75,60,230,.8));color:#fff}
+  .navbtn .n{margin-left:auto;background:rgba(255,255,255,.14);border-radius:999px;padding:0 .45rem;font-size:.72rem}
+  .rodape-lat{margin-top:auto;padding-top:.9rem;border-top:1px solid var(--line);font-size:.72rem;color:var(--dim);text-align:center}
+  .rodape-lat a{color:var(--dim);text-decoration:none}
+  .rodape-lat a:hover{color:var(--ciano)}
+  .conteudo{display:flex;flex-direction:column;min-width:0}
+  .appbar{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.6rem 1.4rem;
+    background:var(--bg2);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30}
+  .conta-menu{position:relative}
+  .conta-btn{display:inline-flex;align-items:center;gap:.5rem;background:var(--surface2);border:1.5px solid var(--line2);
+    color:var(--text);font-weight:700;padding:.4rem .85rem;border-radius:999px}
+  .conta-pop{position:absolute;right:0;top:calc(100% + 6px);min-width:230px;background:var(--surface);
+    border:1px solid var(--line);border-radius:12px;box-shadow:var(--sombra);padding:.4rem;display:none;z-index:40}
+  .conta-menu.open .conta-pop{display:block}
+  main{padding:1.5rem 1.9rem 3rem;min-width:0}
+  .tela{display:none}.tela.on{display:block}
+  .topo{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1.3rem}
+  .topo h2{font-size:1.5rem;letter-spacing:-.02em}
+  .topo .sub{color:var(--dim);font-size:.85rem;margin-top:.15rem}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:1.15rem 1.25rem;margin-bottom:1.1rem}
+  .card>h3{font-size:1rem;margin-bottom:.9rem;display:flex;align-items:center;gap:.5rem}
+  .grade{display:grid;gap:.9rem}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+  .stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:1rem 1.1rem}
+  .stat b{display:block;font-size:2rem;line-height:1.1;background:linear-gradient(120deg,var(--violeta2),var(--ciano));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .stat span{font-size:.75rem;color:var(--dim);font-weight:600}
+  table{width:100%;border-collapse:collapse;font-size:.9rem}
+  th{text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);
+    padding:.5rem .55rem;border-bottom:1.5px solid var(--line)}
+  td{padding:.55rem;border-bottom:1px solid var(--line);vertical-align:middle}
+  tr:hover td{background:rgba(255,255,255,.025)}
+  .vazio{color:var(--dim);text-align:center;padding:2rem 1rem}
+  .tag{display:inline-flex;align-items:center;gap:.3rem;padding:.15rem .6rem;border-radius:999px;font-size:.72rem;font-weight:700}
+  .t-rascunho{background:rgba(114,123,169,.18);color:#b9c0e4}
+  .t-agendado{background:rgba(245,158,11,.16);color:#fbbf24}
+  .t-publicando,.t-pendente,.t-processando{background:rgba(34,211,238,.14);color:#67e8f9}
+  .t-publicado{background:rgba(34,197,94,.15);color:#4ade80}
+  .t-parcial{background:rgba(245,158,11,.16);color:#fbbf24}
+  .t-erro{background:rgba(244,63,94,.15);color:#fb7185}
+  .t-cancelado{background:rgba(114,123,169,.14);color:#8e97c4}
+  .pill{display:inline-flex;align-items:center;gap:.35rem;font-size:.74rem;font-weight:700;padding:.15rem .55rem;
+    border-radius:999px;border:1px solid var(--line2);color:var(--muted)}
+  .aviso{border-radius:10px;padding:.65rem .85rem;font-size:.85rem;margin-bottom:.9rem}
+  .a-erro{background:rgba(244,63,94,.12);border:1px solid rgba(244,63,94,.35);color:#ffb3c1}
+  .a-ok{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.35);color:#86efac}
+  .a-info{background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.3);color:#a5f3fc}
+  .a-alerta{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.35);color:#fcd34d}
+
+  /* ---------------- editor ---------------- */
+  .ed{border:1.5px solid var(--line2);border-radius:10px;overflow:hidden;background:var(--bg2)}
+  .ed-bar{display:flex;flex-wrap:wrap;gap:.2rem;padding:.35rem;background:var(--surface2);border-bottom:1px solid var(--line)}
+  .ed-bar button{border:0;background:none;color:var(--muted);padding:.28rem .5rem;border-radius:7px;font-size:.85rem;min-width:30px}
+  .ed-bar button:hover{background:rgba(255,255,255,.08);color:var(--text)}
+  .ed-bar button.on{background:var(--violeta);color:#fff}
+  .ed-bar .sep{width:1px;background:var(--line2);margin:.2rem .25rem}
+  .ed-corpo{min-height:150px;max-height:460px;overflow:auto;padding:.8rem .9rem;font-size:.95rem}
+  .ed-corpo:empty:before{content:attr(data-vazio);color:var(--dim)}
+  .ed-corpo h2{font-size:1.25rem;margin:.7rem 0 .4rem}
+  .ed-corpo h3{font-size:1.08rem;margin:.6rem 0 .35rem}
+  .ed-corpo p{margin:.45rem 0}
+  .ed-corpo ul,.ed-corpo ol{margin:.45rem 0 .45rem 1.3rem}
+  .ed-corpo blockquote{border-left:3px solid var(--violeta);margin:.5rem 0;padding:.15rem 0 .15rem .8rem;color:var(--muted)}
+  .ed-corpo img{max-width:100%;border-radius:8px}
+  .ed-html{width:100%;min-height:220px;border:0;border-radius:0;background:#0a0d1c;color:#a5f3fc;
+    font:13px/1.6 ui-monospace,Consolas,monospace;padding:.8rem .9rem}
+  .ed-pe{display:flex;justify-content:space-between;align-items:center;gap:.6rem;padding:.3rem .6rem;
+    background:var(--surface2);border-top:1px solid var(--line);font-size:.72rem;color:var(--dim)}
+
+  /* ---------------- mídia ---------------- */
+  .solta{border:2px dashed var(--line2);border-radius:12px;padding:1.4rem;text-align:center;color:var(--dim);
+    background:var(--bg2);transition:border-color .15s,background .15s}
+  .solta.hover{border-color:var(--violeta);background:rgba(108,92,255,.08);color:var(--text)}
+  .mid-grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.8rem;margin-top:.9rem}
+  .mid{background:var(--bg2);border:1px solid var(--line);border-radius:12px;overflow:hidden;position:relative}
+  .mid img,.mid video{width:100%;height:112px;object-fit:cover;display:block;background:#000}
+  .mid .info{padding:.4rem .5rem;font-size:.7rem;color:var(--dim);line-height:1.35}
+  .mid .acoes{display:flex;gap:.25rem;padding:0 .5rem .5rem;flex-wrap:wrap}
+  .mid.capa{border-color:var(--ciano);box-shadow:0 0 0 1px var(--ciano) inset}
+  .mid .selo{position:absolute;top:.4rem;left:.4rem;background:var(--ciano);color:#04202a;font-size:.65rem;
+    font-weight:800;padding:.1rem .45rem;border-radius:999px}
+  .barra{height:5px;background:var(--surface2);border-radius:999px;overflow:hidden;margin-top:.5rem}
+  .barra i{display:block;height:100%;background:linear-gradient(90deg,var(--violeta),var(--ciano));width:0;transition:width .2s}
+
+  /* ---------------- plataformas ---------------- */
+  .plat{border:1.5px solid var(--line);border-radius:12px;margin-bottom:.75rem;overflow:hidden;background:var(--bg2)}
+  .plat.on{border-color:var(--violeta)}
+  .plat.bloq{opacity:.5}
+  .plat-cab{display:flex;align-items:center;gap:.7rem;padding:.7rem .9rem;cursor:pointer;user-select:none}
+  .plat-cab input{width:auto}
+  .plat-cab .nome{font-weight:700;display:flex;align-items:center;gap:.5rem}
+  .plat-cab .ponto{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
+  .plat-cab .porque{margin-left:auto;font-size:.75rem;color:var(--dim)}
+  .plat-corpo{display:none;padding:0 .9rem .9rem;border-top:1px solid var(--line)}
+  .plat.on .plat-corpo{display:block}
+  .contador{font-size:.72rem;color:var(--dim);text-align:right;margin-top:.2rem}
+  .contador.mal{color:#fb7185;font-weight:700}
+  .chk{display:flex;align-items:center;gap:.5rem;font-size:.88rem;color:var(--muted);margin:.5rem 0}
+  .chk input{width:auto}
+
+  /* ---------------- modal ---------------- */
+  .modal-fundo{position:fixed;inset:0;background:rgba(4,6,16,.7);display:grid;place-items:center;z-index:50;padding:1.5rem}
+  .modal{width:min(620px,96vw);max-height:calc(100vh - 4rem);display:flex;flex-direction:column;
+    background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--sombra)}
+  .modal h3{padding:1.1rem 1.3rem .3rem;font-size:1.1rem}
+  .modal-corpo{padding:.4rem 1.3rem 1rem;overflow:auto}
+  .modal .acoes{display:flex;justify-content:flex-end;gap:.6rem;padding:.9rem 1.3rem;border-top:1px solid var(--line)}
+  .toast{position:fixed;right:1.2rem;bottom:1.2rem;z-index:70;display:flex;flex-direction:column;gap:.5rem;max-width:min(420px,90vw)}
+  .toast div{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--violeta);
+    border-radius:10px;padding:.7rem .9rem;font-size:.86rem;box-shadow:var(--sombra)}
+  .toast div.erro{border-left-color:var(--vermelho)}
+  .toast div.ok{border-left-color:var(--verde)}
+  code.seg{display:block;background:#0a0d1c;border:1px solid var(--line);border-radius:8px;padding:.5rem .6rem;
+    font:12px/1.5 ui-monospace,Consolas,monospace;color:#a5f3fc;word-break:break-all;margin-top:.3rem}
+  .lista-log{font:12.5px/1.6 ui-monospace,Consolas,monospace;background:#0a0d1c;border:1px solid var(--line);
+    border-radius:10px;padding:.7rem .8rem;max-height:340px;overflow:auto}
+  .lista-log b{color:#fbbf24}
+  .lista-log .ok{color:#4ade80}.lista-log .erro{color:#fb7185}.lista-log .aviso{color:#fbbf24}.lista-log .info{color:#67e8f9}
+  @media(max-width:860px){
+    .app{grid-template-columns:1fr}
+    aside{position:static;height:auto;flex-direction:row;flex-wrap:wrap;gap:.3rem;align-items:center}
+    aside .marca{width:100%;margin-bottom:.5rem}
+    .navbtn{width:auto}
+    .rodape-lat{display:none}
+    main{padding:1.1rem}
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================== LOGIN ============================== -->
+<div id="login">
+  <form class="card" id="fLogin" autocomplete="on">
+    <div class="marca"><span class="ico">◆</span> LA Publisher</div>
+    <p class="sub">Publicação automática · v{{VERSAO}}</p>
+    <div id="loginErro" class="aviso a-erro" hidden></div>
+    <label for="lu">Usuário</label>
+    <input id="lu" name="username" autocomplete="username" required autofocus>
+    <label for="lp">Senha</label>
+    <input id="lp" name="password" type="password" autocomplete="current-password" required>
+    <button class="btn btn-p" style="width:100%;margin-top:1.2rem" id="btLogin">Entrar</button>
+  </form>
+</div>
+
+<!-- ============================== APP ============================== -->
+<div class="app" id="app" hidden>
+  <aside>
+    <div class="marca"><span class="ico">◆</span> LA Publisher</div>
+    <button class="navbtn on" data-tela="painel">▦ Painel</button>
+    <button class="navbtn" data-tela="materias">✎ Matérias</button>
+    <button class="navbtn" data-tela="fila">⇅ Fila <span class="n" id="nFila" hidden>0</span></button>
+    <button class="navbtn" data-tela="contas" data-admin-editor>◉ Contas</button>
+    <button class="navbtn" data-tela="registro">≡ Registro</button>
+    <button class="navbtn" data-tela="config" data-admin>⚙ Configurações</button>
+    <button class="navbtn" data-tela="usuarios" data-admin>☺ Usuários</button>
+    <div class="rodape-lat">
+      v{{VERSAO}}<br>
+      <a href="https://luizaugust.me" target="_blank" rel="noopener">LA Software House</a>
+    </div>
+  </aside>
+
+  <div class="conteudo">
+    <div class="appbar">
+      <div id="migalha" style="font-weight:700;color:var(--muted)"></div>
+      <div class="conta-menu" id="contaMenu">
+        <button class="conta-btn" id="btConta">● <span id="euNome">—</span> ▾</button>
+        <div class="conta-pop">
+          <button class="navbtn" id="btSenha">Trocar minha senha</button>
+          <button class="navbtn" id="btSair">Sair</button>
+        </div>
+      </div>
+    </div>
+
+    <main>
+      <!-- ---------------------- PAINEL ---------------------- -->
+      <section class="tela on" id="tela-painel">
+        <div class="topo"><div><h2>Painel</h2><div class="sub" id="painelSub"></div></div>
+          <button class="btn btn-p" data-nova>+ Nova matéria</button></div>
+        <div id="painelAviso"></div>
+        <div class="grade g3" id="painelStats"></div>
+        <div class="grade g2" style="margin-top:1.1rem">
+          <div class="card"><h3>Agendados</h3><div id="painelProx"></div></div>
+          <div class="card"><h3>Últimas publicações</h3><div id="painelRec"></div></div>
+        </div>
+      </section>
+
+      <!-- ---------------------- MATÉRIAS ---------------------- -->
+      <section class="tela" id="tela-materias">
+        <div class="topo">
+          <div><h2>Matérias</h2><div class="sub">Título, fotos ou vídeo, resumo e texto — e para onde vai.</div></div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <input id="buscaPost" placeholder="Buscar…" style="width:200px">
+            <select id="filtroStatus" style="width:150px">
+              <option value="">Todos os status</option>
+              <option value="rascunho">Rascunho</option>
+              <option value="agendado">Agendado</option>
+              <option value="publicando">Publicando</option>
+              <option value="publicado">Publicado</option>
+              <option value="parcial">Parcial</option>
+              <option value="erro">Com erro</option>
+            </select>
+            <button class="btn btn-p" data-nova>+ Nova</button>
+          </div>
+        </div>
+        <div class="card" style="padding:.4rem .6rem"><div id="listaPosts"></div></div>
+      </section>
+
+      <!-- ---------------------- EDITOR ---------------------- -->
+      <section class="tela" id="tela-editor">
+        <div class="topo">
+          <div><h2 id="edTitulo">Nova matéria</h2><div class="sub" id="edSub"></div></div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <button class="btn btn-g" id="btVoltar">← Voltar</button>
+            <button class="btn btn-g" id="btSalvar">Salvar rascunho</button>
+            <button class="btn btn-p" id="btPublicar">Publicar</button>
+          </div>
+        </div>
+        <div id="edAviso"></div>
+
+        <div class="card">
+          <h3>Conteúdo</h3>
+          <label for="fTitulo">Título *</label>
+          <input id="fTitulo" maxlength="300" placeholder="Manchete da matéria">
+          <div class="grade g2">
+            <div><label for="fAutor">Autor</label><input id="fAutor" maxlength="120" placeholder="Quem assina"></div>
+            <div><label for="fData">Data da publicação</label><input id="fData" type="date"></div>
+            <div><label for="fFonte">Fonte</label><input id="fFonte" maxlength="200" placeholder="Ex.: Agência Brasil"></div>
+            <div><label for="fFonteUrl">Link da fonte</label><input id="fFonteUrl" placeholder="https://…"></div>
+          </div>
+          <label for="fErrata">Errata</label>
+          <textarea id="fErrata" style="min-height:60px" placeholder="Correção publicada depois. Aparece marcada no fim da matéria — o que foi ao ar não se apaga, corrige-se à vista."></textarea>
+        </div>
+
+        <div class="card">
+          <h3>Resumo <span class="pill">HTML</span></h3>
+          <div id="edResumo"></div>
+        </div>
+
+        <div class="card">
+          <h3>Texto da matéria <span class="pill">HTML</span></h3>
+          <div id="edTexto"></div>
+        </div>
+
+        <div class="card">
+          <h3>Fotos e vídeo</h3>
+          <div class="solta" id="solta">
+            <b>Arraste arquivos aqui</b> ou <button class="btn btn-g btn-sm" id="btEscolher" type="button">escolher</button>
+            <div class="dica" style="margin-top:.4rem">JPG, PNG, WEBP, GIF · MP4, MOV, WEBM · até 2 GB</div>
+            <input type="file" id="fArquivo" multiple hidden accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm">
+          </div>
+          <div id="progresso"></div>
+          <div class="mid-grade" id="midGrade"></div>
+        </div>
+
+        <div class="card">
+          <h3>Para onde vai</h3>
+          <div id="plataformas"></div>
+          <label for="fAgenda">Agendar para (opcional)</label>
+          <input id="fAgenda" type="datetime-local" style="max-width:260px">
+          <div class="dica">Em branco, publica assim que você clicar em Publicar.</div>
+          <div style="display:flex;gap:.6rem;margin-top:1.1rem;flex-wrap:wrap">
+            <button class="btn btn-g" id="btChecar">Conferir regras</button>
+            <button class="btn btn-p" id="btPublicar2">Publicar / Agendar</button>
+          </div>
+        </div>
+
+        <div class="card" id="cardDestinos" hidden>
+          <h3>Situação por plataforma</h3>
+          <div id="listaDestinos"></div>
+        </div>
+        <div class="card" id="cardLogs" hidden>
+          <h3>Registro desta matéria</h3>
+          <div class="lista-log" id="logsPost"></div>
+        </div>
+      </section>
+
+      <!-- ---------------------- FILA ---------------------- -->
+      <section class="tela" id="tela-fila">
+        <div class="topo"><div><h2>Fila</h2><div class="sub">O que está agendado, esperando ou falhou.</div></div>
+          <button class="btn btn-g" id="btRodar">Processar agora</button></div>
+        <div class="card" style="padding:.4rem .6rem"><div id="listaFila"></div></div>
+      </section>
+
+      <!-- ---------------------- CONTAS ---------------------- -->
+      <section class="tela" id="tela-contas">
+        <div class="topo"><div><h2>Contas conectadas</h2>
+          <div class="sub">Cada linha é um destino possível de publicação.</div></div></div>
+        <div id="contasAviso"></div>
+        <div class="card">
+          <h3>Conectar</h3>
+          <div style="display:flex;gap:.6rem;flex-wrap:wrap">
+            <button class="btn btn-g" data-conectar="facebook">Instagram + Facebook</button>
+            <button class="btn btn-g" data-conectar="youtube">YouTube</button>
+            <button class="btn btn-g" data-conectar="tiktok">TikTok</button>
+            <button class="btn btn-c" id="btNovoSite">+ Site / Blog</button>
+          </div>
+          <div class="dica" style="margin-top:.6rem">Instagram e Facebook vêm juntos: é o mesmo app da Meta.
+            O Instagram precisa ser conta Business ou Criador ligada a uma Página.</div>
+        </div>
+        <div class="card" style="padding:.4rem .6rem"><div id="listaContas"></div></div>
+      </section>
+
+      <!-- ---------------------- REGISTRO ---------------------- -->
+      <section class="tela" id="tela-registro">
+        <div class="topo"><div><h2>Registro</h2><div class="sub">O que o sistema fez e quem mandou fazer.</div></div>
+          <button class="btn btn-g" id="btAtualizarLog">Atualizar</button></div>
+        <div class="card"><h3>Publicações</h3><div class="lista-log" id="logGeral"></div></div>
+        <div class="card" data-admin><h3>Auditoria</h3><div class="lista-log" id="logAuditoria"></div></div>
+      </section>
+
+      <!-- ---------------------- CONFIGURAÇÕES ---------------------- -->
+      <section class="tela" id="tela-config">
+        <div class="topo"><div><h2>Configurações</h2><div class="sub">Endereço público e credenciais dos aplicativos.</div></div></div>
+        <div class="card">
+          <h3>Endereço público</h3>
+          <div class="aviso a-info">Instagram, Facebook, TikTok (fotos) e os sites <b>baixam a mídia por URL</b>.
+            Sem um endereço que a internet alcance, a publicação nessas redes não funciona — nem em localhost.</div>
+          <label for="cUrl">URL pública deste sistema</label>
+          <input id="cUrl" placeholder="https://publisher.luizaugust.me">
+          <div class="dica">Sem barra no fim. É a partir dela que se monta o endereço da mídia e o retorno do OAuth.</div>
+          <button class="btn btn-p btn-sm" id="btSalvarConfig" style="margin-top:1rem">Salvar</button>
+        </div>
+        <div class="card" data-admin>
+          <h3>Identificação e páginas legais</h3>
+          <div class="dica" style="margin-bottom:.6rem">A Meta, o Google e o TikTok exigem uma política de
+            privacidade e uma página de exclusão de dados que abram de verdade — apontar para o site deles
+            reprova na revisão. O sistema publica as duas sozinho; preencha aqui quem responde por elas.</div>
+          <div id="avisoLegal"></div>
+          <div class="grade g2">
+            <div><label for="cEmpresa">Empresa responsável</label><input id="cEmpresa" placeholder="LA Software House"></div>
+            <div><label for="cCnpj">CNPJ</label><input id="cCnpj" placeholder="00.000.000/0001-00"></div>
+          </div>
+          <label for="cEmail">E-mail para pedidos de privacidade e exclusão</label>
+          <input id="cEmail" type="email" placeholder="privacidade@luizaugust.me">
+          <div class="dica">É o endereço que aparece nas duas páginas — e para onde o titular escreve.
+            Precisa ser uma caixa que alguém realmente lê.</div>
+          <label>URLs para colar no painel de cada plataforma</label>
+          <code class="seg" id="urlPriv">—</code>
+          <code class="seg" id="urlExcl">—</code>
+          <button class="btn btn-p btn-sm" id="btSalvarLegal" style="margin-top:1rem">Salvar</button>
+        </div>
+        <div class="card">
+          <h3>Aplicativos de desenvolvedor</h3>
+          <div class="dica" style="margin-bottom:.8rem">Cadastre aqui as credenciais que você criou no painel de
+            desenvolvedor de cada plataforma. O segredo é guardado cifrado (AES-256-GCM) e nunca volta para a tela.</div>
+          <div id="listaApps"></div>
+        </div>
+      </section>
+
+      <!-- ---------------------- USUÁRIOS ---------------------- -->
+      <section class="tela" id="tela-usuarios">
+        <div class="topo"><div><h2>Usuários</h2>
+          <div class="sub">admin: tudo · editor: escreve e publica · redator: só escreve.</div></div>
+          <button class="btn btn-p" id="btNovoUsuario">+ Novo</button></div>
+        <div class="card" style="padding:.4rem .6rem"><div id="listaUsuarios"></div></div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div id="modais"></div>
+
+<script>
+/* ==========================================================================
+   LA Publisher — painel
+   SPA sem framework: o servidor manda JSON, aqui a gente desenha.
+   Regra de ouro: NADA de innerHTML com texto vindo do banco sem passar por
+   esc(). O conteúdo das matérias é HTML de propósito, mas título, nome de
+   conta e mensagem de erro são texto e vão escapados.
+   ========================================================================== */
+"use strict";
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => [...(r || document).querySelectorAll(s)];
+const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
+let EU = null, CSRF = "", REGRAS = null, CONTAS = [], POST = null, ULTIMA_TELA = "painel";
+
+/* ------------------------------- API -------------------------------- */
+async function api(rota, opcoes = {}) {
+  const o = { headers: { "X-LAP-CSRF": CSRF }, ...opcoes };
+  if (o.corpo !== undefined) {
+    o.body = JSON.stringify(o.corpo);
+    o.headers["Content-Type"] = "application/json";
+    delete o.corpo;
+  }
+  const r = await fetch("/restrito/api/" + rota, o);
+  if (r.status === 401) { mostrarLogin(); throw new Error("Sessão encerrada."); }
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(d.error || "Erro " + r.status); e.dados = d; throw e; }
+  return d;
+}
+function toast(msg, tipo) {
+  const d = document.createElement("div");
+  if (tipo) d.className = tipo;
+  d.textContent = msg;
+  $("#toast").appendChild(d);
+  setTimeout(() => { d.style.opacity = "0"; d.style.transition = "opacity .4s"; setTimeout(() => d.remove(), 400); }, tipo === "erro" ? 7000 : 4000);
+}
+const dataBR = (iso) => { if (!iso) return "—"; const [a, m, d] = String(iso).slice(0, 10).split("-"); return d ? `${d}/${m}/${a}` : iso; };
+const dataHoraBR = (iso) => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return isNaN(d) ? iso : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
+};
+const mb = (b) => b >= 1073741824 ? (b / 1073741824).toFixed(2) + " GB" : (b / 1048576).toFixed(1) + " MB";
+const dur = (s) => !s ? "" : (s < 60 ? Math.round(s) + "s" : Math.floor(s / 60) + "min " + Math.round(s % 60) + "s");
+
+/* ------------------------------ login ------------------------------- */
+function mostrarLogin() { $("#login").hidden = false; $("#app").hidden = true; EU = null; }
+$("#fLogin").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const bt = $("#btLogin"); bt.disabled = true; bt.textContent = "Entrando…";
+  try {
+    const r = await fetch("/restrito/api/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usuario: $("#lu").value, senha: $("#lp").value }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "Falha ao entrar.");
+    EU = { nome: d.nome, perfil: d.perfil }; CSRF = d.csrf;
+    $("#loginErro").hidden = true; $("#lp").value = "";
+    entrar();
+  } catch (err) { $("#loginErro").textContent = err.message; $("#loginErro").hidden = false; }
+  finally { bt.disabled = false; bt.textContent = "Entrar"; }
+});
+
+async function entrar() {
+  $("#login").hidden = true; $("#app").hidden = false;
+  $("#euNome").textContent = EU.nome + " · " + EU.perfil;
+  $$("[data-admin]").forEach((el) => { el.hidden = EU.perfil !== "admin"; });
+  $$("[data-admin-editor]").forEach((el) => { el.hidden = !(EU.perfil === "admin" || EU.perfil === "editor"); });
+  REGRAS = await api("regras");
+  await carregarContas();
+  irPara("painel");
+}
+
+/* ------------------------------ navegação ---------------------------- */
+function irPara(tela) {
+  ULTIMA_TELA = tela === "editor" ? ULTIMA_TELA : tela;
+  $$(".tela").forEach((t) => t.classList.toggle("on", t.id === "tela-" + tela));
+  $$(".navbtn[data-tela]").forEach((b) => b.classList.toggle("on", b.dataset.tela === tela));
+  const nomes = { painel: "Painel", materias: "Matérias", editor: "Matérias › edição", fila: "Fila", contas: "Contas", registro: "Registro", config: "Configurações", usuarios: "Usuários" };
+  $("#migalha").textContent = nomes[tela] || "";
+  ({ painel: carregarPainel, materias: carregarPosts, fila: carregarFila, contas: carregarContas, registro: carregarRegistro, config: carregarConfig, usuarios: carregarUsuarios })[tela]?.();
+}
+$$(".navbtn[data-tela]").forEach((b) => b.addEventListener("click", () => irPara(b.dataset.tela)));
+$$("[data-nova]").forEach((b) => b.addEventListener("click", () => abrirEditor(null)));
+$("#btConta").addEventListener("click", () => $("#contaMenu").classList.toggle("open"));
+document.addEventListener("click", (e) => { if (!$("#contaMenu").contains(e.target)) $("#contaMenu").classList.remove("open"); });
+$("#btSair").addEventListener("click", async () => { try { await api("logout", { method: "POST" }); } catch { } mostrarLogin(); });
+$("#btSenha").addEventListener("click", () => modalSenha());
+
+/* ------------------------------- PAINEL ------------------------------ */
+async function carregarPainel() {
+  const d = await api("painel");
+  $("#painelSub").textContent = `Olá, ${EU.nome}.`;
+  $("#painelStats").innerHTML = [
+    ["Rascunhos", d.rascunhos], ["Agendados", d.agendados], ["Na fila", d.naFila],
+    ["Publicados", d.publicados], ["Com erro", d.comErro],
+  ].map(([r, n]) => `<div class="stat"><b>${n}</b><span>${r}</span></div>`).join("");
+  $("#painelAviso").innerHTML = d.urlPublica ? "" :
+    `<div class="aviso a-alerta">O <b>endereço público</b> ainda não foi configurado. Instagram, Facebook e os
+     sites baixam a mídia por URL — sem isso a publicação neles vai falhar.
+     ${EU.perfil === "admin" ? '<a href="#" onclick="irPara(\'config\');return false">Configurar agora</a>' : "Peça ao administrador."}</div>`;
+  $("#painelProx").innerHTML = d.proximos.length
+    ? `<table><tbody>${d.proximos.map((x) => `<tr><td>${icone(x.plataforma)}</td>
+        <td>${esc(x.titulo)}</td><td style="color:var(--muted);white-space:nowrap">${dataHoraBR(x.agendado_para)}</td></tr>`).join("")}</tbody></table>`
+    : '<div class="vazio">Nada agendado.</div>';
+  $("#painelRec").innerHTML = d.recentes.length
+    ? `<table><tbody>${d.recentes.map((x) => `<tr><td>${icone(x.plataforma)}</td>
+        <td><a href="#" onclick="abrirEditor(${x.post_id});return false">${esc(x.titulo)}</a></td>
+        <td><span class="tag t-${x.status}">${x.status}</span></td></tr>`).join("")}</tbody></table>`
+    : '<div class="vazio">Nada publicado ainda.</div>';
+  $("#nFila").textContent = d.naFila + d.agendados;
+  $("#nFila").hidden = !(d.naFila + d.agendados);
+}
+const ICONES = { instagram: "◧", facebook: "f", tiktok: "♪", youtube: "▶", site: "◈" };
+function icone(p) {
+  const r = REGRAS?.plataformas[p];
+  return `<span class="pill" title="${esc(r?.rotulo || p)}"><span style="color:${esc(r?.cor || "#888")}">${ICONES[p] || "•"}</span> ${esc(r?.rotulo || p)}</span>`;
+}
+
+/* ------------------------------ MATÉRIAS ----------------------------- */
+let timerBusca;
+$("#buscaPost").addEventListener("input", () => { clearTimeout(timerBusca); timerBusca = setTimeout(carregarPosts, 300); });
+$("#filtroStatus").addEventListener("change", carregarPosts);
+
+async function carregarPosts() {
+  const q = new URLSearchParams({ q: $("#buscaPost").value, status: $("#filtroStatus").value });
+  const linhas = await api("posts?" + q);
+  $("#listaPosts").innerHTML = linhas.length ? `<table>
+    <thead><tr><th></th><th>Título</th><th>Data</th><th>Destinos</th><th>Status</th><th></th></tr></thead>
+    <tbody>${linhas.map((p) => `<tr>
+      <td style="width:56px">${p.capa ? `<img src="/midia/${esc(p.capa)}" alt="" style="width:48px;height:34px;object-fit:cover;border-radius:6px">` : ""}</td>
+      <td><a href="#" onclick="abrirEditor(${p.id});return false"><b>${esc(p.titulo)}</b></a>
+        <div style="font-size:.75rem;color:var(--dim)">${esc(p.autor || "")}${p.fonte ? " · " + esc(p.fonte) : ""}</div></td>
+      <td style="white-space:nowrap;color:var(--muted)">${dataBR(p.data_publicacao)}</td>
+      <td>${p.destinos.map((d) => `<span class="pill" title="${esc(d.status)}" style="border-color:${d.status === "publicado" ? "var(--verde)" : d.status === "erro" ? "var(--vermelho)" : "var(--line2)"}">${ICONES[d.plataforma] || "•"}</span>`).join(" ") || "—"}</td>
+      <td><span class="tag t-${p.status}">${p.status}</span></td>
+      <td style="text-align:right"><button class="btn btn-g btn-xs" onclick="abrirEditor(${p.id})">Abrir</button></td>
+    </tr>`).join("")}</tbody></table>` : '<div class="vazio">Nenhuma matéria ainda. Clique em <b>+ Nova</b>.</div>';
+}
+
+/* ==========================================================================
+   EDITOR DE HTML
+   contenteditable com barra de formatação + alternância para o código HTML.
+   execCommand é depreciado mas é o que todo navegador ainda executa igual;
+   a alternativa seria escrever um modelo de documento inteiro — desnecessário
+   para um editor de matéria.
+   ========================================================================== */
+function criarEditor(hospedeiro, vazio) {
+  hospedeiro.innerHTML = `
+    <div class="ed">
+      <div class="ed-bar">
+        <button type="button" data-cmd="bold" title="Negrito (Ctrl+B)"><b>B</b></button>
+        <button type="button" data-cmd="italic" title="Itálico (Ctrl+I)"><i>I</i></button>
+        <button type="button" data-cmd="underline" title="Sublinhado"><u>U</u></button>
+        <button type="button" data-cmd="strikeThrough" title="Riscado"><s>S</s></button>
+        <span class="sep"></span>
+        <button type="button" data-bloco="p" title="Parágrafo">¶</button>
+        <button type="button" data-bloco="h2" title="Título">H2</button>
+        <button type="button" data-bloco="h3" title="Subtítulo">H3</button>
+        <button type="button" data-bloco="blockquote" title="Citação">❝</button>
+        <span class="sep"></span>
+        <button type="button" data-cmd="insertUnorderedList" title="Lista">• —</button>
+        <button type="button" data-cmd="insertOrderedList" title="Lista numerada">1. —</button>
+        <span class="sep"></span>
+        <button type="button" data-link title="Link">🔗</button>
+        <button type="button" data-cmd="unlink" title="Tirar link">⛓</button>
+        <button type="button" data-cmd="removeFormat" title="Limpar formatação">✕</button>
+        <span class="sep"></span>
+        <button type="button" data-cmd="undo" title="Desfazer">↶</button>
+        <button type="button" data-cmd="redo" title="Refazer">↷</button>
+        <span class="sep"></span>
+        <button type="button" data-html title="Ver/editar o código HTML">&lt;/&gt; HTML</button>
+      </div>
+      <div class="ed-corpo" contenteditable="true" data-vazio="${esc(vazio || "Escreva aqui…")}"></div>
+      <textarea class="ed-html" spellcheck="false" hidden></textarea>
+      <div class="ed-pe"><span class="conta-chars">0 caracteres</span><span class="modo">visual</span></div>
+    </div>`;
+
+  const corpo = $(".ed-corpo", hospedeiro), fonte = $(".ed-html", hospedeiro);
+  const contador = $(".conta-chars", hospedeiro), modo = $(".modo", hospedeiro);
+  let emHtml = false;
+
+  const atualizarContagem = () => {
+    const t = (emHtml ? fonte.value.replace(/<[^>]+>/g, "") : corpo.textContent) || "";
+    contador.textContent = t.trim().length + " caracteres";
+  };
+  const ed = {
+    get html() { return emHtml ? fonte.value : corpo.innerHTML; },
+    set html(v) { corpo.innerHTML = v || ""; fonte.value = v || ""; atualizarContagem(); },
+    aoMudar: null,
+  };
+  const mudou = () => { atualizarContagem(); ed.aoMudar?.(); };
+
+  $$("[data-cmd]", hospedeiro).forEach((b) => b.addEventListener("click", () => {
+    corpo.focus(); document.execCommand(b.dataset.cmd, false, null); mudou();
+  }));
+  $$("[data-bloco]", hospedeiro).forEach((b) => b.addEventListener("click", () => {
+    corpo.focus(); document.execCommand("formatBlock", false, b.dataset.bloco); mudou();
+  }));
+  $("[data-link]", hospedeiro).addEventListener("click", () => {
+    const u = prompt("Endereço do link (https://…)");
+    if (!u) return;
+    if (!/^(https?:\/\/|\/|mailto:|tel:)/i.test(u)) return toast("Link inválido. Use https://", "erro");
+    corpo.focus(); document.execCommand("createLink", false, u); mudou();
+  });
+  $("[data-html]", hospedeiro).addEventListener("click", (e) => {
+    emHtml = !emHtml;
+    if (emHtml) { fonte.value = formatarHtml(corpo.innerHTML); corpo.hidden = true; fonte.hidden = false; }
+    else { corpo.innerHTML = fonte.value; corpo.hidden = false; fonte.hidden = true; }
+    e.currentTarget.classList.toggle("on", emHtml);
+    modo.textContent = emHtml ? "código HTML" : "visual";
+    mudou();
+  });
+  corpo.addEventListener("input", mudou);
+  fonte.addEventListener("input", mudou);
+  /* Colar de fora traz <span style>, <font> e lixo do Word. Colamos como
+     texto puro; quem quiser marcação usa a barra ou o modo HTML. */
+  corpo.addEventListener("paste", (e) => {
+    e.preventDefault();
+    const t = (e.clipboardData || window.clipboardData).getData("text/plain");
+    document.execCommand("insertText", false, t);
+  });
+  return ed;
+}
+/* Quebra o HTML em linhas legíveis para o modo código. */
+function formatarHtml(h) {
+  return String(h || "")
+    .replace(/></g, ">\n<")
+    .replace(/<(p|h2|h3|h4|ul|ol|li|blockquote|figure|div)([^>]*)>/gi, "\n<$1$2>")
+    .replace(/\n{2,}/g, "\n").trim();
+}
+
+let EDITOR_RESUMO, EDITOR_TEXTO;
+
+/* ------------------------------ abrir editor -------------------------- */
+async function abrirEditor(id) {
+  POST = id ? await api("posts/" + id) : {
+    id: null, titulo: "", slug: "", resumo_html: "", texto_html: "", fonte: "", fonte_url: "",
+    autor: EU.nome, errata: "", data_publicacao: new Date().toISOString().slice(0, 10),
+    tipo: "foto", status: "rascunho", midias: [], destinos: [], logs: [],
+  };
+  irPara("editor");
+  $("#edTitulo").textContent = POST.id ? "Editar matéria" : "Nova matéria";
+  $("#edSub").innerHTML = POST.id
+    ? `#${POST.id} · <span class="tag t-${POST.status}">${POST.status}</span> · atualizada ${dataHoraBR(POST.atualizado)}`
+    : "Rascunho novo — salve para poder enviar fotos e vídeo.";
+  $("#fTitulo").value = POST.titulo; $("#fAutor").value = POST.autor || "";
+  $("#fData").value = (POST.data_publicacao || "").slice(0, 10);
+  $("#fFonte").value = POST.fonte || ""; $("#fFonteUrl").value = POST.fonte_url || "";
+  $("#fErrata").value = POST.errata || ""; $("#fAgenda").value = "";
+  EDITOR_RESUMO = criarEditor($("#edResumo"), "Chamada curta — é o que vai para a listagem do blog e vira a legenda sugerida.");
+  EDITOR_TEXTO = criarEditor($("#edTexto"), "A matéria completa.");
+  EDITOR_RESUMO.html = POST.resumo_html || "";
+  EDITOR_TEXTO.html = POST.texto_html || "";
+  const podePublicar = EU.perfil === "admin" || EU.perfil === "editor";
+  $("#btPublicar").hidden = !podePublicar; $("#btPublicar2").hidden = !podePublicar;
+  $("#edAviso").innerHTML = podePublicar ? "" :
+    '<div class="aviso a-info">Seu perfil escreve e edita, mas não publica. Salve o rascunho e avise um editor.</div>';
+  desenharMidias(); desenharPlataformas(); desenharDestinos();
+}
+$("#btVoltar").addEventListener("click", () => irPara(ULTIMA_TELA === "editor" ? "materias" : ULTIMA_TELA));
+
+function coletarPost() {
+  return {
+    titulo: $("#fTitulo").value.trim(),
+    autor: $("#fAutor").value.trim(),
+    data_publicacao: $("#fData").value,
+    fonte: $("#fFonte").value.trim(),
+    fonte_url: $("#fFonteUrl").value.trim(),
+    errata: $("#fErrata").value.trim(),
+    resumo_html: EDITOR_RESUMO.html,
+    texto_html: EDITOR_TEXTO.html,
+    tipo: POST.midias.some((m) => m.tipo === "video") ? "video" : (POST.midias.length ? "foto" : "texto"),
+  };
+}
+async function salvar(silencioso) {
+  const d = coletarPost();
+  if (!d.titulo) { toast("A matéria precisa de um título.", "erro"); return false; }
+  if (POST.id) { await api("posts/" + POST.id, { method: "PUT", corpo: d }); }
+  else {
+    const r = await api("posts", { method: "POST", corpo: d });
+    POST.id = r.id;
+    $("#edSub").innerHTML = `#${POST.id} · <span class="tag t-rascunho">rascunho</span>`;
+    desenharPlataformas();
+  }
+  /* Relê o que o servidor gravou: o HTML volta higienizado, e é ele que vale. */
+  const novo = await api("posts/" + POST.id);
+  POST = { ...novo, midias: novo.midias, destinos: novo.destinos };
+  EDITOR_RESUMO.html = POST.resumo_html; EDITOR_TEXTO.html = POST.texto_html;
+  if (!silencioso) toast("Rascunho salvo.", "ok");
+  return true;
+}
+$("#btSalvar").addEventListener("click", async () => { try { await salvar(); } catch (e) { toast(e.message, "erro"); } });
+
+/* ------------------------------- MÍDIA -------------------------------- */
+function desenharMidias() {
+  const g = $("#midGrade");
+  if (!POST.midias.length) { g.innerHTML = ""; return; }
+  g.innerHTML = POST.midias.map((m) => `
+    <div class="mid ${m.capa ? "capa" : ""}">
+      ${m.capa ? '<span class="selo">capa</span>' : ""}
+      ${m.tipo === "video"
+        ? `<video src="/midia/${esc(m.arquivo)}" preload="metadata" muted></video>`
+        : `<img src="/midia/${esc(m.arquivo)}" alt="">`}
+      <div class="info">${m.largura ? m.largura + "×" + m.altura : "?"} · ${mb(m.bytes)}${m.duracao ? " · " + dur(m.duracao) : ""}
+        <br>${esc((m.mime || "").split("/")[1] || "")}</div>
+      <div class="acoes">
+        ${m.tipo === "imagem" && !m.capa ? `<button class="btn btn-g btn-xs" onclick="marcarCapa(${m.id})">capa</button>` : ""}
+        <button class="btn btn-g btn-xs" onclick="moverMidia(${m.id},-1)">←</button>
+        <button class="btn btn-g btn-xs" onclick="moverMidia(${m.id},1)">→</button>
+        <button class="btn btn-d btn-xs" onclick="apagarMidia(${m.id})">apagar</button>
+      </div>
+    </div>`).join("");
+}
+async function marcarCapa(id) {
+  await api("midias/" + id, { method: "PUT", corpo: { capa: 1 } });
+  POST.midias.forEach((m) => { m.capa = m.id === id ? 1 : 0; });
+  desenharMidias();
+}
+async function moverMidia(id, dir) {
+  const i = POST.midias.findIndex((m) => m.id === id), j = i + dir;
+  if (i < 0 || j < 0 || j >= POST.midias.length) return;
+  [POST.midias[i], POST.midias[j]] = [POST.midias[j], POST.midias[i]];
+  await Promise.all(POST.midias.map((m, k) => api("midias/" + m.id, { method: "PUT", corpo: { ordem: k } })));
+  desenharMidias(); conferirRegras(true);
+}
+async function apagarMidia(id) {
+  if (!confirm("Apagar este arquivo da matéria?")) return;
+  await api("midias/" + id, { method: "DELETE" });
+  POST.midias = POST.midias.filter((m) => m.id !== id);
+  desenharMidias(); desenharPlataformas();
+}
+
+$("#btEscolher").addEventListener("click", () => $("#fArquivo").click());
+$("#fArquivo").addEventListener("change", (e) => enviarArquivos([...e.target.files]));
+const solta = $("#solta");
+["dragenter", "dragover"].forEach((ev) => solta.addEventListener(ev, (e) => { e.preventDefault(); solta.classList.add("hover"); }));
+["dragleave", "drop"].forEach((ev) => solta.addEventListener(ev, (e) => { e.preventDefault(); solta.classList.remove("hover"); }));
+solta.addEventListener("drop", (e) => enviarArquivos([...e.dataTransfer.files]));
+
+async function enviarArquivos(arquivos) {
+  if (!arquivos.length) return;
+  if (!POST.id) { if (!(await salvar(true))) return; toast("Rascunho salvo — enviando arquivos…"); }
+  for (const f of arquivos) await enviarUm(f);
+  $("#fArquivo").value = "";
+  desenharPlataformas();
+}
+/* XHR e não fetch: só ele dá progresso de upload, e vídeo de 800 MB sem
+   barra de progresso é sofrimento. */
+function enviarUm(arquivo) {
+  return new Promise((pronto) => {
+    const cx = document.createElement("div");
+    cx.innerHTML = `<div style="font-size:.8rem;color:var(--muted);margin-top:.7rem">${esc(arquivo.name)} — <span class="pct">0%</span><div class="barra"><i></i></div></div>`;
+    $("#progresso").appendChild(cx);
+    const x = new XMLHttpRequest();
+    x.open("POST", "/restrito/api/posts/" + POST.id + "/midia");
+    x.setRequestHeader("Content-Type", arquivo.type || "application/octet-stream");
+    x.setRequestHeader("X-Nome", encodeURIComponent(arquivo.name));
+    x.setRequestHeader("X-LAP-CSRF", CSRF);
+    x.upload.onprogress = (e) => {
+      if (!e.lengthComputable) return;
+      const p = Math.round(e.loaded / e.total * 100);
+      $(".pct", cx).textContent = p + "%"; $(".barra i", cx).style.width = p + "%";
+    };
+    x.onload = () => {
+      let d = {}; try { d = JSON.parse(x.responseText); } catch { }
+      if (x.status === 200 && d.midia) { POST.midias.push(d.midia); desenharMidias(); }
+      else toast(d.error || "Falha ao enviar " + arquivo.name, "erro");
+      cx.remove(); pronto();
+    };
+    x.onerror = () => { toast("Falha de rede ao enviar " + arquivo.name, "erro"); cx.remove(); pronto(); };
+    x.send(arquivo);
+  });
+}
+
+/* ---------------------------- PLATAFORMAS ----------------------------- */
+function contasDe(p) { return CONTAS.filter((c) => c.plataforma === p && c.ativo); }
+
+function desenharPlataformas() {
+  const temVideo = POST.midias.some((m) => m.tipo === "video");
+  const temFoto = POST.midias.some((m) => m.tipo === "imagem");
+  const html = REGRAS.ordem.map((p) => {
+    const R = REGRAS.plataformas[p];
+    const contas = contasDe(p);
+    const jaPublicado = POST.destinos.find((d) => d.plataforma === p && d.status === "publicado");
+    let bloqueio = "", nota = "";
+    if (!contas.length) bloqueio = "sem conta conectada";
+    /* No site, republicar ATUALIZA a matéria — é assim que se publica uma
+       errata. Nas redes, republicar duplicaria o post: fica travado. */
+    else if (jaPublicado && p === "site") nota = "no ar — reenviar atualiza";
+    else if (jaPublicado) bloqueio = "já publicado";
+    else if (p === "youtube" && !temVideo) bloqueio = "precisa de vídeo";
+    else if (p === "tiktok" && !temVideo && !temFoto) bloqueio = "precisa de vídeo ou foto";
+    else if (p === "instagram" && !temVideo && !temFoto) bloqueio = "precisa de foto ou vídeo";
+    const dest = POST.destinos.find((d) => d.plataforma === p);
+    const op = dest?.opcoes || {};
+
+    return `<div class="plat ${bloqueio ? "bloq" : ""}" data-plat="${p}">
+      <label class="plat-cab">
+        <input type="checkbox" data-marca="${p}" ${bloqueio ? "disabled" : ""}>
+        <span class="nome"><span class="ponto" style="background:${esc(R.cor)}"></span>${esc(R.rotulo)}</span>
+        <span class="porque">${esc(bloqueio || nota || (contas.length + " conta" + (contas.length > 1 ? "s" : "")))}</span>
+      </label>
+      <div class="plat-corpo">
+        <label>Conta</label>
+        <select data-conta="${p}">${contas.map((c) => `<option value="${c.id}" ${dest?.conta_id === c.id ? "selected" : ""}>${esc(c.apelido || c.nome)}</option>`).join("")}</select>
+        ${R.campos.map((c) => campoHtml(p, c, op)).join("")}
+        <div class="resultado" data-res="${p}"></div>
+      </div>
+    </div>`;
+  }).join("");
+  $("#plataformas").innerHTML = html || '<div class="vazio">Nenhuma plataforma disponível.</div>';
+
+  $$("[data-marca]").forEach((cb) => cb.addEventListener("change", () => {
+    cb.closest(".plat").classList.toggle("on", cb.checked);
+    if (cb.checked) preencherLegenda(cb.dataset.marca);
+  }));
+  $$("#plataformas textarea, #plataformas input, #plataformas select").forEach((el) => {
+    el.addEventListener("input", () => atualizarContadores(el));
+  });
+}
+function campoHtml(p, [chave, rotulo, tipo, extra = {}], valores) {
+  const id = `c_${p}_${chave}`;
+  const v = valores[chave] !== undefined ? valores[chave] : (extra.padrao !== undefined ? extra.padrao : "");
+  const dica = extra.dica ? `<div class="dica">${esc(extra.dica)}</div>` : "";
+  if (tipo === "bool")
+    return `<label class="chk"><input type="checkbox" data-campo="${p}:${chave}" id="${id}" ${v ? "checked" : ""}> ${esc(rotulo)}</label>${dica}`;
+  if (tipo === "select")
+    return `<label for="${id}">${esc(rotulo)}</label><select data-campo="${p}:${chave}" id="${id}">
+      ${extra.opcoes.map((o) => `<option value="${esc(o)}" ${String(v) === String(o) ? "selected" : ""}>${esc(extra.rotulos?.[o] || o)}</option>`).join("")}</select>${dica}`;
+  if (tipo === "textarea")
+    return `<label for="${id}">${esc(rotulo)}</label><textarea data-campo="${p}:${chave}" id="${id}" data-max="${extra.max || 0}">${esc(v)}</textarea>
+      <div class="contador" data-cont="${p}:${chave}"></div>${dica}`;
+  return `<label for="${id}">${esc(rotulo)}</label><input data-campo="${p}:${chave}" id="${id}" data-max="${extra.max || 0}" value="${esc(v)}">
+    <div class="contador" data-cont="${p}:${chave}"></div>${dica}`;
+}
+function atualizarContadores(el) {
+  if (!el.dataset.campo) return;
+  const cont = $(`[data-cont="${el.dataset.campo}"]`);
+  if (!cont) return;
+  const max = Number(el.dataset.max || 0);
+  const [p] = el.dataset.campo.split(":");
+  const R = REGRAS.plataformas[p];
+  const n = el.value.length;
+  const tags = (el.value.match(/(?:^|\s)#[\p{L}\p{N}_]+/gu) || []).length;
+  const partes = [];
+  if (max) partes.push(`${n}/${max}`);
+  if (R.legenda?.hashtagsMax) partes.push(`${tags}/${R.legenda.hashtagsMax} hashtags`);
+  cont.textContent = partes.join(" · ");
+  cont.classList.toggle("mal", (max && n > max) || (R.legenda?.hashtagsMax && tags > R.legenda.hashtagsMax));
+}
+async function preencherLegenda(p) {
+  const alvo = $(`[data-campo="${p}:legenda"]`) || $(`[data-campo="${p}:descricao"]`);
+  const titulo = $(`[data-campo="${p}:titulo"]`);
+  if (titulo && !titulo.value) { titulo.value = $("#fTitulo").value.slice(0, 100); atualizarContadores(titulo); }
+  if (!alvo || alvo.value.trim() || !POST.id) return;
+  try {
+    const r = await api(`posts/${POST.id}/legenda/${p}`);
+    alvo.value = r.legenda; atualizarContadores(alvo);
+  } catch { }
+}
+function coletarDestinos() {
+  const saida = [];
+  $$("[data-marca]").forEach((cb) => {
+    if (!cb.checked) return;
+    const p = cb.dataset.marca;
+    const opcoes = {};
+    $$(`[data-campo^="${p}:"]`).forEach((el) => {
+      const chave = el.dataset.campo.split(":")[1];
+      opcoes[chave] = el.type === "checkbox" ? el.checked : el.value;
+    });
+    saida.push({ plataforma: p, conta_id: Number($(`[data-conta="${p}"]`).value), opcoes });
+  });
+  return saida;
+}
+async function conferirRegras(silencioso) {
+  if (!POST.id) return;
+  const destinos = coletarDestinos();
+  if (!destinos.length) { if (!silencioso) toast("Marque ao menos uma plataforma.", "erro"); return null; }
+  const r = await api(`posts/${POST.id}/checar`, { method: "POST", corpo: { destinos } });
+  let tudoOk = true;
+  for (const [p, v] of Object.entries(r)) {
+    const cx = $(`[data-res="${p}"]`);
+    if (!cx) continue;
+    if (v.erros.length) tudoOk = false;
+    cx.innerHTML = [
+      ...v.erros.map((e) => `<div class="aviso a-erro" style="margin:.6rem 0 0">${esc(e)}</div>`),
+      ...v.avisos.map((e) => `<div class="aviso a-alerta" style="margin:.6rem 0 0">${esc(e)}</div>`),
+    ].join("") || '<div class="aviso a-ok" style="margin:.6rem 0 0">Dentro das regras da plataforma.</div>';
+  }
+  if (!silencioso) toast(tudoOk ? "Tudo dentro das regras." : "Há pendências — veja os avisos em vermelho.", tudoOk ? "ok" : "erro");
+  return tudoOk;
+}
+$("#btChecar").addEventListener("click", async () => { try { await salvar(true); await conferirRegras(); } catch (e) { toast(e.message, "erro"); } });
+
+async function publicar() {
+  try {
+    if (!(await salvar(true))) return;
+    const destinos = coletarDestinos();
+    if (!destinos.length) return toast("Marque ao menos uma plataforma.", "erro");
+    const quando = $("#fAgenda").value;
+    const nomes = destinos.map((d) => REGRAS.plataformas[d.plataforma].rotulo).join(", ");
+    if (!confirm(`${quando ? "Agendar" : "Publicar agora"} em: ${nomes}?`)) return;
+    await api(`posts/${POST.id}/publicar`, { method: "POST", corpo: { destinos, agendado_para: quando || null } });
+    toast(quando ? "Agendado." : "Enviado para a fila — acompanhe abaixo.", "ok");
+    await recarregarPost();
+  } catch (e) {
+    if (e.dados?.problemas) {
+      for (const [p, v] of Object.entries(e.dados.problemas)) {
+        const cx = $(`[data-res="${p}"]`);
+        if (cx) cx.innerHTML = v.erros.map((x) => `<div class="aviso a-erro" style="margin:.6rem 0 0">${esc(x)}</div>`).join("");
+      }
+    }
+    toast(e.message, "erro");
+  }
+}
+$("#btPublicar").addEventListener("click", publicar);
+$("#btPublicar2").addEventListener("click", publicar);
+
+async function recarregarPost() {
+  if (!POST.id) return;
+  const novo = await api("posts/" + POST.id);
+  POST = novo;
+  $("#edSub").innerHTML = `#${POST.id} · <span class="tag t-${POST.status}">${POST.status}</span> · atualizada ${dataHoraBR(POST.atualizado)}`;
+  desenharMidias(); desenharPlataformas(); desenharDestinos();
+}
+function desenharDestinos() {
+  const c = $("#cardDestinos"), l = $("#cardLogs");
+  c.hidden = !POST.destinos?.length;
+  if (POST.destinos?.length) {
+    $("#listaDestinos").innerHTML = `<table><tbody>${POST.destinos.map((d) => `<tr>
+      <td>${icone(d.plataforma)}</td>
+      <td><span class="tag t-${d.status}">${d.status}</span></td>
+      <td style="color:var(--muted);font-size:.82rem">
+        ${d.erro ? esc(d.erro) : d.url_externa ? `<a href="${esc(d.url_externa)}" target="_blank" rel="noopener">ver publicação ↗</a>`
+          : d.agendado_para ? "agendado para " + dataHoraBR(d.agendado_para) : ""}
+        ${d.tentativas ? ` <span class="pill">${d.tentativas} tentativa(s)</span>` : ""}</td>
+      <td style="text-align:right;white-space:nowrap">
+        ${d.status !== "publicado" ? `<button class="btn btn-g btn-xs" onclick="acaoDestino(${d.id},'retentar')">tentar de novo</button>
+        <button class="btn btn-d btn-xs" onclick="acaoDestino(${d.id},'cancelar')">cancelar</button>`
+        : d.plataforma === "site" ? `<button class="btn btn-g btn-xs" onclick="acaoDestino(${d.id},'retentar')">reenviar (atualiza)</button>` : ""}</td>
+    </tr>`).join("")}</tbody></table>`;
+  }
+  l.hidden = !POST.logs?.length;
+  if (POST.logs?.length) $("#logsPost").innerHTML = POST.logs.map(linhaLog).join("");
+}
+async function acaoDestino(id, acao) {
+  try { await api(`destinos/${id}/${acao}`, { method: "POST" }); await recarregarPost(); toast("Feito.", "ok"); }
+  catch (e) { toast(e.message, "erro"); }
+}
+const linhaLog = (l) => `<div><span class="${esc(l.nivel)}">[${esc(l.nivel)}]</span> <b>${dataHoraBR(l.ts)}</b> ${l.plataforma ? "· " + esc(l.plataforma) + " " : ""}${esc(l.mensagem)}</div>`;
+
+/* -------------------------------- FILA -------------------------------- */
+async function carregarFila() {
+  const linhas = await api("fila");
+  $("#listaFila").innerHTML = linhas.length ? `<table>
+    <thead><tr><th>Plataforma</th><th>Matéria</th><th>Quando</th><th>Status</th><th></th></tr></thead>
+    <tbody>${linhas.map((d) => `<tr>
+      <td>${icone(d.plataforma)}</td>
+      <td><a href="#" onclick="abrirEditor(${d.post_id});return false">${esc(d.titulo)}</a>
+        ${d.erro ? `<div style="font-size:.75rem;color:#fb7185">${esc(d.erro)}</div>` : ""}</td>
+      <td style="white-space:nowrap;color:var(--muted)">${d.agendado_para ? dataHoraBR(d.agendado_para) : d.proxima_tentativa ? "retenta " + dataHoraBR(d.proxima_tentativa) : "assim que possível"}</td>
+      <td><span class="tag t-${d.status}">${d.status}</span></td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn btn-g btn-xs" onclick="acaoFila(${d.id},'retentar')">agora</button>
+        <button class="btn btn-d btn-xs" onclick="acaoFila(${d.id},'cancelar')">cancelar</button></td>
+    </tr>`).join("")}</tbody></table>` : '<div class="vazio">Fila vazia.</div>';
+}
+async function acaoFila(id, acao) {
+  try { await api(`destinos/${id}/${acao}`, { method: "POST" }); carregarFila(); toast("Feito.", "ok"); }
+  catch (e) { toast(e.message, "erro"); }
+}
+$("#btRodar").addEventListener("click", async () => {
+  const b = $("#btRodar"); b.disabled = true; b.textContent = "Processando…";
+  try { const r = await api("fila/rodar", { method: "POST" }); toast(`${r.processados} publicação(ões) processada(s).`, "ok"); carregarFila(); }
+  catch (e) { toast(e.message, "erro"); }
+  finally { b.disabled = false; b.textContent = "Processar agora"; }
+});
+
+/* ------------------------------- CONTAS ------------------------------- */
+async function carregarContas() {
+  CONTAS = await api("contas");
+  const cx = $("#listaContas");
+  if (!cx) return;
+  cx.innerHTML = CONTAS.length ? `<table>
+    <thead><tr><th>Plataforma</th><th>Conta</th><th>Situação</th><th></th></tr></thead>
+    <tbody>${CONTAS.map((c) => `<tr>
+      <td>${icone(c.plataforma)}</td>
+      <td><b>${esc(c.apelido || c.nome)}</b>${c.apelido ? `<div style="font-size:.75rem;color:var(--dim)">${esc(c.nome)}</div>` : ""}
+        ${c.meta?.url ? `<div style="font-size:.75rem;color:var(--dim)">${esc(c.meta.url)}</div>` : ""}</td>
+      <td>${c.ativo ? '<span class="tag t-publicado">ativa</span>' : '<span class="tag t-cancelado">desativada</span>'}
+        ${c.ultimo_erro ? `<div style="font-size:.75rem;color:#fb7185">${esc(c.ultimo_erro)}</div>` : ""}
+        ${c.vence_em ? `<div style="font-size:.72rem;color:var(--dim)">token até ${dataHoraBR(c.vence_em)}</div>` : ""}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn btn-g btn-xs" onclick="verificarConta(${c.id})">testar</button>
+        ${EU.perfil === "admin" ? `<button class="btn btn-g btn-xs" onclick="alternarConta(${c.id},${c.ativo ? 0 : 1})">${c.ativo ? "desativar" : "ativar"}</button>
+        <button class="btn btn-d btn-xs" onclick="excluirConta(${c.id})">excluir</button>` : ""}</td>
+    </tr>`).join("")}</tbody></table>` : '<div class="vazio">Nenhuma conta conectada ainda.</div>';
+}
+async function verificarConta(id) {
+  toast("Testando…");
+  try {
+    const r = await api(`contas/${id}/verificar`, { method: "POST" });
+    if (r.ok) toast(`OK — ${r.nome || ""}${r.seguidores ? " · " + r.seguidores + " seguidores" : ""}${r.posts !== null && r.posts !== undefined ? " · " + r.posts + " matérias no site" : ""}`, "ok");
+    else toast("Falhou: " + r.error, "erro");
+  } catch (e) { toast(e.message, "erro"); }
+  carregarContas();
+}
+async function alternarConta(id, ativo) {
+  try { await api("contas/" + id, { method: "PUT", corpo: { ativo } }); carregarContas(); } catch (e) { toast(e.message, "erro"); }
+}
+async function excluirConta(id) {
+  if (!confirm("Excluir esta conta do sistema? As publicações já feitas nas redes não são afetadas.")) return;
+  try { await api("contas/" + id, { method: "DELETE" }); carregarContas(); toast("Removida.", "ok"); }
+  catch (e) { toast(e.message, "erro"); }
+}
+$$("[data-conectar]").forEach((b) => b.addEventListener("click", async () => {
+  try {
+    const r = await api("conectar/" + b.dataset.conectar, { method: "POST" });
+    window.open(r.url, "_blank", "noopener");
+    toast("Autorize na aba que abriu e depois volte aqui e clique em atualizar.", "ok");
+    setTimeout(carregarContas, 12000);
+  } catch (e) { toast(e.message, "erro"); }
+}));
+$("#btNovoSite").addEventListener("click", () => modal("Conectar um site do gerador", `
+  <div class="aviso a-info">Instale o arquivo <b>conector/lapublisher.js</b> no site (3 linhas no server.js).
+    No primeiro boot ele imprime um segredo no log — é ele que vai aqui.</div>
+  <label for="sNome">Nome</label><input id="sNome" placeholder="BemEstarClinic">
+  <label for="sUrl">URL do site</label><input id="sUrl" placeholder="https://bemestarclinic.com">
+  <label for="sSeg">Segredo do conector</label><input id="sSeg" placeholder="64 caracteres hexadecimais">`,
+  async () => {
+    await api("contas", { method: "POST", corpo: { plataforma: "site", nome: $("#sNome").value, url: $("#sUrl").value, segredo: $("#sSeg").value } });
+    carregarContas(); toast("Site conectado.", "ok");
+  }));
+
+/* ------------------------------ REGISTRO ------------------------------ */
+async function carregarRegistro() {
+  const logs = await api("logs");
+  $("#logGeral").innerHTML = logs.length ? logs.map(linhaLog).join("") : '<div style="color:var(--dim)">Nada registrado.</div>';
+  if (EU.perfil === "admin") {
+    const a = await api("auditoria");
+    $("#logAuditoria").innerHTML = a.length
+      ? a.map((x) => `<div><b>${dataHoraBR(x.ts)}</b> <span class="info">${esc(x.usuario_nome || "?")}</span> ${esc(x.acao)} ${esc(x.alvo || "")} <span style="color:var(--dim)">${esc(x.ip || "")}</span></div>`).join("")
+      : '<div style="color:var(--dim)">Sem registros.</div>';
+  }
+}
+$("#btAtualizarLog").addEventListener("click", carregarRegistro);
+
+/* --------------------------- CONFIGURAÇÕES ---------------------------- */
+async function carregarConfig() {
+  const c = await api("config");
+  $("#cUrl").value = c.url_publica || "";
+  if (EU.perfil !== "admin") return;
+  $("#cEmpresa").value = c.empresa || "";
+  $("#cCnpj").value = c.cnpj || "";
+  $("#cEmail").value = c.email_privacidade || "";
+  const base = c.url_publica || location.origin;
+  $("#urlPriv").textContent = base + "/privacidade";
+  $("#urlExcl").textContent = base + "/exclusao-de-dados";
+  $("#avisoLegal").innerHTML = c.email_privacidade ? "" :
+    '<div class="aviso a-alerta">Sem e-mail preenchido, as páginas ficam no ar mas sem endereço de contato — e a revisão da Meta cobra isso.</div>';
+
+  const a = await api("apps");
+  const NOMES = {
+    facebook: ["Meta (Instagram + Facebook)", "developers.facebook.com → app do tipo Business. Produtos: Login do Facebook (ou Login para Empresas) e Instagram."],
+    youtube: ["Google (YouTube)", "console.cloud.google.com → ative a YouTube Data API v3 → credenciais OAuth 2.0 do tipo Aplicativo Web."],
+    tiktok: ["TikTok", "developers.tiktok.com → app com Content Posting API. Enquanto não passar pela auditoria, só publica como privado."],
+  };
+  $("#listaApps").innerHTML = Object.entries(NOMES).map(([p, [nome, dica]]) => {
+    const d = a.apps[p] || {}, ex = d.extra || {};
+    /* A Meta tem dois produtos de login e eles se pedem de jeitos diferentes —
+       por isso os dois campos extras aparecem só nela. */
+    const extraMeta = p !== "facebook" ? "" : `
+      <label for="cfg_${p}">ID da configuração — só no "Login do Facebook para Empresas"</label>
+      <input id="cfg_${p}" value="${esc(ex.config_id || "")}" placeholder="deixe vazio se usa o Login do Facebook clássico">
+      <div class="dica">No app da Meta: Login do Facebook para Empresas → Configurações (ou Modelos) →
+        crie uma configuração com as permissões e copie o ID dela. Com esse campo preenchido, as
+        permissões saem da configuração; vazio, elas vão na URL como no login clássico.</div>
+      <label for="ver_${p}">Versão da Graph API</label>
+      <input id="ver_${p}" value="${esc(ex.versao || "")}" placeholder="v21.0 (padrão)">
+      <div class="dica">Troque se a Meta aposentar essa versão — o sintoma é erro logo no clique de Conectar.</div>`;
+    return `<div class="card" style="background:var(--bg2);margin-bottom:.8rem">
+      <h3>${esc(nome)} ${d.tem_secret ? '<span class="tag t-publicado">configurado</span>' : '<span class="tag t-rascunho">pendente</span>'}</h3>
+      <div class="dica">${esc(dica)}</div>
+      <label>URL de retorno (cadastre exatamente assim no painel deles)</label>
+      <code class="seg">${esc(a.redirect[p])}</code>
+      <label for="ci_${p}">Client ID${p === "tiktok" ? " (client key)" : ""}</label>
+      <input id="ci_${p}" value="${esc(d.client_id || "")}">
+      <label for="cs_${p}">Client secret</label>
+      <input id="cs_${p}" type="password" placeholder="${d.tem_secret ? "••••••••  (deixe vazio para manter)" : "cole aqui"}">
+      ${extraMeta}
+      <button class="btn btn-p btn-sm" style="margin-top:.9rem" onclick="salvarApp('${p}')">Salvar</button>
+    </div>`;
+  }).join("");
+}
+async function salvarApp(p) {
+  try {
+    const corpo = { client_id: $(`#ci_${p}`).value.trim() };
+    if ($(`#cs_${p}`).value.trim()) corpo.client_secret = $(`#cs_${p}`).value.trim();
+    if ($(`#cfg_${p}`)) corpo.extra = { config_id: $(`#cfg_${p}`).value.trim(), versao: $(`#ver_${p}`).value.trim() };
+    await api("apps/" + p, { method: "PUT", corpo });
+    toast("Credenciais salvas.", "ok"); carregarConfig();
+  } catch (e) { toast(e.message, "erro"); }
+}
+$("#btSalvarConfig").addEventListener("click", async () => {
+  try { await api("config", { method: "PUT", corpo: { url_publica: $("#cUrl").value.trim() } }); toast("Salvo.", "ok"); carregarConfig(); }
+  catch (e) { toast(e.message, "erro"); }
+});
+$("#btSalvarLegal").addEventListener("click", async () => {
+  try {
+    await api("config", { method: "PUT", corpo: {
+      empresa: $("#cEmpresa").value.trim(), cnpj: $("#cCnpj").value.trim(),
+      email_privacidade: $("#cEmail").value.trim(),
+    } });
+    toast("Salvo — confira as duas páginas.", "ok"); carregarConfig();
+  } catch (e) { toast(e.message, "erro"); }
+});
+
+/* ------------------------------ USUÁRIOS ------------------------------ */
+async function carregarUsuarios() {
+  const us = await api("usuarios");
+  $("#listaUsuarios").innerHTML = `<table>
+    <thead><tr><th>Nome</th><th>Login</th><th>Perfil</th><th>Situação</th><th></th></tr></thead>
+    <tbody>${us.map((u) => `<tr>
+      <td><b>${esc(u.nome)}</b></td><td>${esc(u.email)}</td><td><span class="pill">${esc(u.perfil)}</span></td>
+      <td>${u.ativo ? '<span class="tag t-publicado">ativo</span>' : '<span class="tag t-cancelado">bloqueado</span>'}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn btn-g btn-xs" onclick="modalUsuario(${u.id})">editar</button>
+        <button class="btn btn-g btn-xs" onclick="alternarUsuario(${u.id},${u.ativo ? 0 : 1})">${u.ativo ? "bloquear" : "liberar"}</button>
+        <button class="btn btn-d btn-xs" onclick="excluirUsuario(${u.id})">excluir</button></td>
+    </tr>`).join("")}</tbody></table>`;
+}
+$("#btNovoUsuario").addEventListener("click", () => modalUsuario(null));
+async function modalUsuario(id) {
+  const us = await api("usuarios");
+  const u = id ? us.find((x) => x.id === id) : { nome: "", email: "", perfil: "redator", ativo: 1 };
+  modal(id ? "Editar usuário" : "Novo usuário", `
+    <label for="uNome">Nome</label><input id="uNome" value="${esc(u.nome)}">
+    <label for="uEmail">Login</label><input id="uEmail" value="${esc(u.email)}">
+    <label for="uPerfil">Perfil</label>
+    <select id="uPerfil">
+      <option value="admin" ${u.perfil === "admin" ? "selected" : ""}>admin — tudo, inclusive contas e usuários</option>
+      <option value="editor" ${u.perfil === "editor" ? "selected" : ""}>editor — escreve e publica</option>
+      <option value="redator" ${u.perfil === "redator" ? "selected" : ""}>redator — só escreve</option>
+    </select>
+    <label for="uSenha">Senha${id ? " (deixe vazio para manter)" : ""}</label><input id="uSenha" type="password">`,
+    async () => {
+      const corpo = { nome: $("#uNome").value, email: $("#uEmail").value, perfil: $("#uPerfil").value };
+      if ($("#uSenha").value) corpo.senha = $("#uSenha").value;
+      if (id) await api("usuarios/" + id, { method: "PUT", corpo });
+      else await api("usuarios", { method: "POST", corpo });
+      carregarUsuarios(); toast("Salvo.", "ok");
+    });
+}
+async function alternarUsuario(id, ativo) {
+  try { await api("usuarios/" + id, { method: "PUT", corpo: { ativo } }); carregarUsuarios(); } catch (e) { toast(e.message, "erro"); }
+}
+async function excluirUsuario(id) {
+  if (!confirm("Excluir este usuário?")) return;
+  try { await api("usuarios/" + id, { method: "DELETE" }); carregarUsuarios(); } catch (e) { toast(e.message, "erro"); }
+}
+
+/* -------------------------------- MODAL -------------------------------- */
+/* Clique fora NÃO fecha (evita perder o que foi digitado por um clique
+   errado) — só o Cancelar. Mesma decisão do /restrito da clínica. */
+function modal(titulo, corpoHtml, aoConfirmar, rotuloOk) {
+  const f = document.createElement("div");
+  f.className = "modal-fundo";
+  f.innerHTML = `<div class="modal"><h3>${esc(titulo)}</h3><div class="modal-corpo">${corpoHtml}</div>
+    <div class="acoes"><button class="btn btn-g" data-cancelar>Cancelar</button>
+    <button class="btn btn-p" data-ok>${esc(rotuloOk || "Salvar")}</button></div></div>`;
+  $("#modais").appendChild(f);
+  $("[data-cancelar]", f).addEventListener("click", () => f.remove());
+  $("[data-ok]", f).addEventListener("click", async () => {
+    const b = $("[data-ok]", f); b.disabled = true;
+    try { await aoConfirmar(); f.remove(); } catch (e) { toast(e.message, "erro"); b.disabled = false; }
+  });
+  return f;
+}
+function modalSenha() {
+  $("#contaMenu").classList.remove("open");
+  modal("Trocar minha senha", `
+    <label for="sAtual">Senha atual</label><input id="sAtual" type="password">
+    <label for="sNova">Nova senha (mínimo 8)</label><input id="sNova" type="password">
+    <div class="dica">Trocar a senha derruba as outras sessões abertas com este usuário.</div>`,
+    async () => {
+      await api("senha", { method: "POST", corpo: { atual: $("#sAtual").value, nova: $("#sNova").value } });
+      toast("Senha trocada.", "ok");
+    });
+}
+
+/* ------------------------------- início -------------------------------- */
+(async () => {
+  try {
+    const m = await fetch("/restrito/api/me").then((r) => r.ok ? r.json() : null);
+    if (m) { EU = { nome: m.nome, perfil: m.perfil }; CSRF = m.csrf; await entrar(); return; }
+  } catch { }
+  mostrarLogin();
+})();
+/* Atualiza a fila e o painel sozinho — publicação demora e ninguém deve
+   ficar apertando F5. */
+setInterval(() => {
+  if (!EU) return;
+  if ($("#tela-fila").classList.contains("on")) carregarFila();
+  else if ($("#tela-painel").classList.contains("on")) carregarPainel();
+  else if ($("#tela-editor").classList.contains("on") && POST?.id
+    && POST.destinos?.some((d) => ["pendente", "processando", "agendado"].includes(d.status))) recarregarPost();
+}, 20000);
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "la-publisher",
+  "version": "1.0.0",
+  "description": "Publicação automática de postagens em Instagram, Facebook, TikTok, YouTube e sites/blogs — Node.js + SQLite, sem dependências externas.",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "author": "LA Software House",
+  "license": "UNLICENSED"
+}

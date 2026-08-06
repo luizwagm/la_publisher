@@ -1,0 +1,22 @@
+# Banco e segredos — NUNCA versionar
+data/
+!data/.gitkeep
+*.db
+*.db-wal
+*.db-shm
+.chave
+
+# Mídia enviada pelos operadores
+midia/*
+!midia/.gitkeep
+
+# Ambiente
+.env
+node_modules/
+npm-debug.log*
+
+# Sistema
+Thumbs.db
+.DS_Store
+*.swp
+*.tmp

@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "la-publisher",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server.js"],
+      "port": 5190,
+      "url": "http://localhost:5190"
+    }
+  ]
+}
