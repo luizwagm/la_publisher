@@ -19,6 +19,36 @@ lateral e em `GET /saude`. Toda alteração de versão precisa de uma linha aqui
 
 ---
 
+## 1.1.3 — 2026-08-06
+
+- **`instalar.sh` não sobrescreve mais o vhost que o certbot ajustou.** O certbot
+  reescreve o arquivo ao emitir o certificado (acrescenta o bloco 443 e o
+  redirecionamento). Reexecutar o instalador depois disso jogava o HTTPS fora e
+  deixava o site em HTTP puro — pior: o certificado continua existindo, então o
+  sintoma não é óbvio. Agora, achando `managed by Certbot` no arquivo, o script
+  mantém o que está. Para refazer de propósito: `RECRIAR_VHOST=1 sudo ./instalar.sh …`
+  e passar o certbot em seguida.
+
+---
+
+## 1.1.2 — 2026-08-06
+
+Dois defeitos do `instalar.sh`, encontrados na primeira instalação real.
+
+- **Alarme falso de exposição.** A conferência final testava sempre em `https://`.
+  Sem certificado, tudo responde `000` — e o script lia `000` como "diferente de
+  404, logo está exposto", acusando `/server.js`, `/data/.chave` e o conector de
+  estarem sendo servidos. Não estavam: por HTTP os cinco caminhos devolviam 404.
+  Agora o script testa no esquema que **existe** e trata `000` como "não deu para
+  testar", que é o que ele significa.
+- **Colisão com a renovação automática.** O `certbot.timer` disparou às 20:10:43
+  e o instalador chamou o certbot às 20:10:46 — três segundos depois. O certbot
+  recusa com *"Another instance of Certbot is already running"*, que parece lock
+  preso e não é. Agora o script reconhece essa mensagem, espera 90s e tenta mais
+  uma vez; qualquer outro erro ele mostra e para.
+
+---
+
 ## 1.1.1 — 2026-08-06
 
 ### A trava de força bruta não valia nada atrás do nginx

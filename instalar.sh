@@ -93,9 +93,19 @@ fi
 # -------------------------------------------------------------- 4. nginx
 azul "4/6  Vhost do nginx"
 ARQ="/etc/nginx/sites-available/$DOMINIO"
-[ -f "$ARQ" ] && cp "$ARQ" "$ARQ.bak-$(date +%F-%H%M%S)" && amarelo "já existia — copiei para $ARQ.bak-*"
-sed "s|publisher.luizaugust.me|$DOMINIO|g; s|127.0.0.1:5190|127.0.0.1:$PORTA|g; s|/var/www/projetos/LA-Publisher|$APP_DIR|g" \
-  nginx/publisher.luizaugust.me.conf > "$ARQ"
+# O certbot REESCREVE este arquivo ao emitir o certificado: acrescenta o bloco
+# 443 e o redirecionamento. Sobrescrever depois disso apagaria o HTTPS e
+# deixaria o site em HTTP puro — com a agravante de que o certificado continua
+# existindo, então ninguém desconfia. Por isso: se o certbot já mexeu aqui,
+# NÃO tocamos no arquivo. Para forçar (mudou porta, mudou limite de upload),
+# rode com RECRIAR_VHOST=1 — e depois passe o certbot de novo.
+if [ -f "$ARQ" ] && grep -q "managed by Certbot" "$ARQ" && [ "${RECRIAR_VHOST:-0}" != "1" ]; then
+  amarelo "o vhost já foi ajustado pelo certbot — mantido como está (use RECRIAR_VHOST=1 para refazer)"
+else
+  [ -f "$ARQ" ] && cp "$ARQ" "$ARQ.bak-$(date +%F-%H%M%S)" && amarelo "já existia — copiei para $ARQ.bak-*"
+  sed "s|publisher.luizaugust.me|$DOMINIO|g; s|127.0.0.1:5190|127.0.0.1:$PORTA|g; s|/var/www/projetos/LA-Publisher|$APP_DIR|g" \
+    nginx/publisher.luizaugust.me.conf > "$ARQ"
+fi
 ln -sf "$ARQ" "/etc/nginx/sites-enabled/$DOMINIO"
 if ! nginx -t 2>&1 | sed 's/^/     /'; then
   vermelho "configuração inválida — nada foi recarregado"
@@ -119,41 +129,80 @@ ALVO=$(dig +short A "$DOMINIO" 2>/dev/null | grep -E '^[0-9.]+$' | tail -1)
 echo "     IPs deste servidor: $(echo "$IPS" | tr '\n' ' ')"
 echo "     $DOMINIO → ${ALVO:-—}"
 
+emitir_certificado() {
+  # O certbot.timer roda a renovação automática todo dia. Se ele disparar no
+  # mesmo minuto que este script, o certbot recusa com "Another instance of
+  # Certbot is already running" — não é erro nosso nem lock preso, é colisão.
+  # Já aconteceu: 3 segundos de diferença. Por isso uma segunda tentativa.
+  local saida
+  for tentativa in 1 2; do
+    saida=$(certbot --nginx -d "$DOMINIO" --redirect --agree-tos --no-eff-email \
+              -m "$EMAIL" --non-interactive 2>&1)
+    if [ $? -eq 0 ]; then echo "$saida" | tail -3 | sed 's/^/     /'; return 0; fi
+    if echo "$saida" | grep -qi "Another instance of Certbot"; then
+      amarelo "a renovação automática estava rodando — esperando 90s e tentando de novo"
+      sleep 90
+    else
+      echo "$saida" | tail -6 | sed 's/^/     /'
+      return 1
+    fi
+  done
+  vermelho "o certbot continuou ocupado. Rode à mão daqui a alguns minutos."
+  return 1
+}
+
+ESQUEMA="http"
 if [ -z "$ALVO" ] || ! echo "$IPS" | grep -qxF "$ALVO"; then
   amarelo "o DNS de $DOMINIO ainda não aponta para cá — PULANDO o certificado."
   amarelo "Crie o registro A e depois rode:"
   amarelo "  sudo certbot --nginx -d $DOMINIO --redirect --agree-tos --no-eff-email -m $EMAIL"
   amarelo "O Let's Encrypt limita 5 falhas por hora no mesmo domínio — por isso não insistimos aqui."
-elif certbot --nginx -d "$DOMINIO" --redirect --agree-tos --no-eff-email -m "$EMAIL" --non-interactive; then
+elif emitir_certificado; then
+  ESQUEMA="https"
   verde "certificado emitido e HTTPS ativo"
   certbot renew --dry-run >/dev/null 2>&1 \
     && verde "renovação automática testada" \
     || amarelo "o teste de renovação falhou — rode 'certbot renew --dry-run'"
 else
   vermelho "o certbot falhou. O sistema segue em HTTP. Veja /var/log/letsencrypt/letsencrypt.log"
+  vermelho "Repita só o certificado com:"
+  vermelho "  sudo certbot --nginx -d $DOMINIO --redirect --agree-tos --no-eff-email -m $EMAIL"
 fi
 
 # ------------------------------------------------------------ 6. conferir
-azul "6/6  Conferindo de fora"
+# Testamos no esquema que EXISTE. Conferir https sem certificado devolve 000
+# em tudo — e 000 não significa "está exposto", significa "não deu para
+# testar". Dizer o contrário é alarme falso na cara do operador.
+azul "6/6  Conferindo de fora ($ESQUEMA)"
+[ "$ESQUEMA" = "http" ] && amarelo "sem certificado ainda — conferindo por HTTP"
+
 for rota in /saude /privacidade /exclusao-de-dados /restrito/; do
-  C=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "https://$DOMINIO$rota" || echo 000)
-  [ "$C" = "200" ] && verde "https://$DOMINIO$rota → $C" || amarelo "https://$DOMINIO$rota → $C"
+  C=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$ESQUEMA://$DOMINIO$rota" || echo 000)
+  case "$C" in
+    200) verde "$ESQUEMA://$DOMINIO$rota → 200" ;;
+    000) amarelo "$rota → não respondeu (não deu para testar)" ;;
+    *)   amarelo "$rota → $C" ;;
+  esac
 done
-for rota in /server.js /data/publisher.db /data/.chave /conector/lapublisher.js; do
-  C=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "https://$DOMINIO$rota" || echo 000)
-  [ "$C" = "404" ] && verde "$rota → 404 (correto)" || vermelho "$rota → $C — NÃO deveria ser servido"
+for rota in /server.js /data/publisher.db /data/.chave /conector/lapublisher.js /testes/seguranca.cjs; do
+  C=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$ESQUEMA://$DOMINIO$rota" || echo 000)
+  case "$C" in
+    404) verde "$rota → 404 (correto)" ;;
+    000) amarelo "$rota → não deu para testar (sem resposta)" ;;
+    *)   vermelho "$rota → $C — NÃO deveria ser servido" ;;
+  esac
 done
 
 echo
 azul "Pronto."
-echo "  Painel:  https://$DOMINIO/restrito/"
+echo "  Painel:  $ESQUEMA://$DOMINIO/restrito/"
 echo "  Login:   admin"
 journalctl -u "$SERVICO" --no-pager | grep -m1 "senha:" | sed 's/^.*senha:/  Senha:  /' || \
   echo "  Senha:   publisher-2026  (se este for o primeiro boot)"
 echo
 echo "  Faça AGORA, nesta ordem:"
 echo "   1. entre no painel e TROQUE A SENHA"
-echo "   2. Configurações → Endereço público → https://$DOMINIO"
+echo "   2. Configurações → Endereço público → $ESQUEMA://$DOMINIO"
 echo "   3. Configurações → Identificação → empresa, CNPJ e e-mail"
 echo "   4. copie as URLs de privacidade/exclusão para o painel da Meta"
 echo "   5. GUARDE UM BACKUP de $APP_DIR/data/.chave — sem ela os tokens viram lixo"

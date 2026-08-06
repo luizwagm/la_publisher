@@ -15,7 +15,7 @@
    As casas NÃO são limitadas a um dígito: depois de 1.9.0 vem 1.10.0.
    Toda alteração de versão precisa de uma linha no CHANGELOG.md.
    ========================================================================== */
-const VERSAO = "1.1.1";
+const VERSAO = "1.1.3";
 
 /* Compara duas versões ("1.10.0" > "1.9.0"). Devolve -1, 0 ou 1. */
 function compararVersao(a, b) {
