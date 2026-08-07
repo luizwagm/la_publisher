@@ -251,6 +251,13 @@ function validarDestino(plataforma, opcoes = {}, post = {}, midias = []) {
   }
   if (plataforma === "instagram" && !legenda.trim())
     avisos.push("Instagram: publicação sem legenda.");
+  if (plataforma === "instagram" && imagens.some((m) => m.mime === "image/png")) {
+    /* A documentação da Meta diz JPEG para `image_url`. PNG às vezes passa e
+       às vezes volta com erro genérico de formato — e aí o operador fica
+       procurando defeito no lugar errado. Aviso, não erro: quando passa, não
+       há motivo para barrar. */
+    avisos.push("Instagram: a Meta documenta só JPEG para publicação por API. PNG costuma funcionar, mas se falhar com erro de formato, converta a imagem para JPG.");
+  }
 
   return { erros, avisos };
 }

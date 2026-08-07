@@ -106,19 +106,59 @@ async function renovar({ clientId, clientSecret, token, extra = {} }) {
 }
 
 /* ======================= publicação — INSTAGRAM =========================== */
-async function esperarContainer(v, containerId, token, plataforma = "instagram") {
-  /* Vídeo demora: a Meta processa em segundo plano. 60 tentativas × 5s = 5min,
-     que cobre com folga um Reels de 15 minutos comprimido. */
-  for (let i = 0; i < 60; i++) {
+/* ==========================================================================
+   ESPERAR O CONTAINER FICAR PRONTO — vale para FOTO também, não só vídeo.
+
+   Quem baixa o arquivo é o servidor da Meta, e isso leva segundos. Publicar
+   antes disso devolve:
+       code 9007 · subcode 2207027 · "A mídia não está pronta para ser
+       publicada. Aguarde um momento."
+
+   Foi exatamente o que aconteceu na primeira publicação real (07/08/2026): o
+   log do nginx mostrou a Meta baixando a imagem às 12:27:33, o publish às
+   12:27:36 e a Meta terminando o download às 12:27:38. Três segundos de
+   corrida. Antes desta correção, só o ramo de vídeo esperava.
+   ========================================================================== */
+async function esperarContainer(v, containerId, token, { intervalo = 5000, tentativas = 60, plataforma = "instagram" } = {}) {
+  for (let i = 0; i < tentativas; i++) {
     const st = await pedir(comQuery(`${graph(v)}/${containerId}`, {
       fields: "status_code,status", access_token: token,
     }), { plataforma });
+    /* Nem todo tipo de container reporta status_code. Sem o campo, não há o
+       que esperar — seguir é melhor que travar por um dado que não existe. */
+    if (!st.status_code) return true;
     if (st.status_code === "FINISHED") return true;
     if (st.status_code === "ERROR" || st.status_code === "EXPIRED")
-      throw new ErroApi(`O Instagram rejeitou a mídia (${st.status_code}).`, { status: 400, detalhe: st.status || "", plataforma, permanente: true });
-    await esperar(5000);
+      throw new ErroApi(`O Instagram rejeitou a mídia (${st.status_code}).`,
+        { status: 400, detalhe: st.status || "", plataforma, permanente: true });
+    await esperar(intervalo);
   }
-  throw new ErroApi("O Instagram não terminou de processar a mídia em 5 minutos.", { status: 504, plataforma, permanente: false });
+  const seg = Math.round(intervalo * tentativas / 1000);
+  throw new ErroApi(`O Instagram não terminou de processar a mídia em ${seg >= 60 ? Math.round(seg / 60) + " minutos" : seg + " segundos"}.`,
+    { status: 504, plataforma, permanente: false });
+}
+/* Foto é rápida (segundos); vídeo é lento (minutos). Mesma função, ritmos
+   diferentes — cutucar a API de 5 em 5 segundos por uma foto é desperdício,
+   e esperar só 30s por um Reels é pouco. */
+const RITMO_FOTO = { intervalo: 1500, tentativas: 40 };   // até 60s
+const RITMO_VIDEO = { intervalo: 5000, tentativas: 60 };  // até 5min
+
+/* Rede de segurança: se ainda assim o publish disser "não está pronta",
+   espera e tenta de novo em vez de marcar a matéria como erro. */
+async function publicarContainer(v, ig, containerId, token) {
+  for (let i = 0; i < 5; i++) {
+    try {
+      return await pedir(`${graph(v)}/${ig}/media_publish`, {
+        metodo: "POST", plataforma: "instagram",
+        cabecalhos: { "Content-Type": "application/x-www-form-urlencoded" },
+        corpo: form({ creation_id: containerId, access_token: token }),
+      });
+    } catch (e) {
+      const naoPronta = /2207027/.test(e.detalhe || "") || /not available|não está pronta/i.test(e.message);
+      if (!naoPronta || i === 4) throw e;
+      await esperar(3000);
+    }
+  }
 }
 
 async function publicarInstagram({ conta, midias, opcoes, urlDe }) {
@@ -139,9 +179,11 @@ async function publicarInstagram({ conta, midias, opcoes, urlDe }) {
       corpo: form({ media_type: "REELS", video_url: urlDe(videos[0]), caption: legenda, access_token: token }),
     });
     containerId = c.id;
-    await esperarContainer(v, containerId, token);
+    await esperarContainer(v, containerId, token, RITMO_VIDEO);
   } else if (imagens.length > 1) {
-    /* Carrossel: cada filho é um container com is_carousel_item. */
+    /* Carrossel: cada filho é um container com is_carousel_item. Cada um
+       precisa que a Meta BAIXE a imagem — por isso cada filho é esperado
+       antes de entrar no carrossel, e o carrossel é esperado antes de ir ao ar. */
     const filhos = [];
     for (const img of imagens.slice(0, 10)) {
       const f = await pedir(`${graph(v)}/${ig}/media`, {
@@ -149,6 +191,7 @@ async function publicarInstagram({ conta, midias, opcoes, urlDe }) {
         cabecalhos: { "Content-Type": "application/x-www-form-urlencoded" },
         corpo: form({ image_url: urlDe(img), is_carousel_item: "true", access_token: token }),
       });
+      await esperarContainer(v, f.id, token, RITMO_FOTO);
       filhos.push(f.id);
     }
     const c = await pedir(`${graph(v)}/${ig}/media`, {
@@ -157,6 +200,7 @@ async function publicarInstagram({ conta, midias, opcoes, urlDe }) {
       corpo: form({ media_type: "CAROUSEL", children: filhos.join(","), caption: legenda, access_token: token }),
     });
     containerId = c.id;
+    await esperarContainer(v, containerId, token, RITMO_FOTO);
   } else if (imagens.length === 1) {
     const c = await pedir(`${graph(v)}/${ig}/media`, {
       metodo: "POST", plataforma: "instagram",
@@ -164,15 +208,14 @@ async function publicarInstagram({ conta, midias, opcoes, urlDe }) {
       corpo: form({ image_url: urlDe(imagens[0]), caption: legenda, access_token: token }),
     });
     containerId = c.id;
+    /* ERA AQUI O DEFEITO: publicava direto, sem dar tempo de a Meta baixar a
+       imagem do nosso servidor. Ver o comentário de esperarContainer. */
+    await esperarContainer(v, containerId, token, RITMO_FOTO);
   } else {
     throw new ErroApi("O Instagram não publica post sem foto nem vídeo.", { status: 400, plataforma: "instagram", permanente: true });
   }
 
-  const pub = await pedir(`${graph(v)}/${ig}/media_publish`, {
-    metodo: "POST", plataforma: "instagram",
-    cabecalhos: { "Content-Type": "application/x-www-form-urlencoded" },
-    corpo: form({ creation_id: containerId, access_token: token }),
-  });
+  const pub = await publicarContainer(v, ig, containerId, token);
 
   /* Hashtags no 1º comentário — prática comum para não poluir a legenda.
      Falha aqui NÃO derruba a publicação: o post já está no ar. */

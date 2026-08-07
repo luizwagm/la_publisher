@@ -19,6 +19,45 @@ lateral e em `GET /saude`. Toda alteração de versão precisa de uma linha aqui
 
 ---
 
+## 1.1.6 — 2026-08-07
+
+### Foto no Instagram falhava com "Media ID is not available"
+
+Na **primeira publicação real**. O Facebook entrou, o Instagram não:
+
+```
+code 9007 · subcode 2207027
+"A mídia não está pronta para ser publicada. Aguarde um momento."
+```
+
+O log do nginx datou a corrida: a Meta baixou a imagem às **12:27:33**, o
+`media_publish` saiu às **12:27:36** e a Meta terminou o download às
+**12:27:38**. Publicar no Instagram é em duas etapas — cria-se um container
+apontando para a URL, e **quem baixa o arquivo é o servidor da Meta**. Eu
+esperava esse processamento **só no ramo de vídeo**; foto ia direto para o
+publish.
+
+**Corrigido**: `esperarContainer()` agora vale para foto também, com ritmo
+próprio (1,5s × 40 = até 60s; vídeo segue em 5s × 60 = 5min). No carrossel,
+cada filho é esperado antes de entrar, e o carrossel é esperado antes de ir ao
+ar. Somado a isso, `publicarContainer()` reconhece o subcode 2207027 e tenta de
+novo até 5 vezes — rede de segurança para o caso de a Meta demorar mais que a
+espera.
+
+O Facebook não sofria do problema porque lá o envio é numa etapa só.
+
+---
+
+## 1.1.5 — 2026-08-07
+
+- **Aviso de PNG no Instagram.** A documentação da Meta diz JPEG para o
+  `image_url` da publicação por API. PNG costuma passar, mas quando não passa o
+  erro que volta é genérico de formato — e o operador vai procurar defeito no
+  lugar errado. Agora o *Conferir regras* avisa antes. É aviso, não erro:
+  quando funciona, não há motivo para barrar.
+
+---
+
 ## 1.1.4 — 2026-08-06
 
 - **A URI de retorno do OAuth respondia 400 ao rastreador da Meta.** Descoberto
