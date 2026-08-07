@@ -9,6 +9,7 @@ Node.js + SQLite, **sem uma única dependência de npm**. Roda com `node server.
 LA-Publisher/
 ├── server.js            porta de entrada HTTP, cabeçalhos de segurança, /midia público
 ├── painel.js            área /restrito: telas, API e OAuth
+├── api.js               API pública /api/v1 — os sites mandam publicar (ver API.md)
 ├── publico.js           /privacidade e /exclusao-de-dados (exigidas pelas plataformas)
 ├── fila.js              o motor: pega os destinos pendentes e publica
 ├── regras.js            FONTE ÚNICA das regras de cada plataforma
@@ -23,8 +24,9 @@ LA-Publisher/
 │   ├── site.js          conector para os sites do gerador
 │   └── http.js          fetch com timeout, erro tipado e máscara de token
 ├── conector/
-│   ├── lapublisher.js   arquivo que se instala NO SITE do cliente
-│   └── INSTALAR.md      3 linhas no server.js dele
+│   ├── lapublisher.js          instala NO SITE: recebe a matéria que empurramos
+│   ├── cliente-lapublisher.js  instala NO SITE: manda o LA Publisher publicar
+│   └── INSTALAR.md             3 linhas no server.js dele
 ├── restrito/app.html    o painel inteiro (SPA sem framework)
 ├── testes/              bateria de segurança (103) e teste ponta a ponta (32)
 ├── data/                banco + chave do cofre  (nunca versionado)
@@ -202,17 +204,34 @@ corresponde ao software é pior que política nenhuma. E vale a leitura de um
 advogado antes de usar com cliente: o texto é honesto quanto ao software, mas
 não substitui parecer jurídico.
 
+## Os dois sentidos da integração com um site
+
+| | Quem começa | Arquivo no site | Para quê |
+|---|---|---|---|
+| **Empurrar** | LA Publisher | `conector/lapublisher.js` | a matéria escrita aqui aparece no blog do cliente |
+| **Puxar** | o site | `conector/cliente-lapublisher.js` | a notícia escrita no painel do site vai para as redes |
+
+Os dois podem conviver no mesmo site. O segundo é a **API pública** — chave por
+site, assinatura HMAC, isolamento entre clientes, idempotência e webhook.
+Referência completa em [API.md](API.md); a tela de gestão é **Sites (API)**, no
+painel.
+
 ## Testes
 
 ```bash
 # terminal 1 — servidor de teste, banco e porta separados
-PORT=5191 LAP_DATA=/tmp/lap-teste node server.js
+PORT=5191 LAP_DATA=/tmp/lap-teste LAP_MIDIA_LOCAL=1 node server.js
 
 # terminal 2
-node testes/seguranca.cjs          # 103 testes
+node testes/seguranca.cjs          # 110 testes
+node testes/api.cjs                # 37 testes da API pública
 node testes/site-falso.cjs         # sobe um site do gerador falso, imprime o segredo
 node testes/integracao.cjs <segredo>   # 32 testes de ponta a ponta
 ```
+
+`LAP_MIDIA_LOCAL=1` desliga a trava de SSRF na busca de mídia e existe **só**
+para a bateria, que hospeda a imagem em `127.0.0.1`. O servidor grita no boot
+se subir com ela ligada — **nunca em produção**.
 
 **Nunca aponte a bateria para o servidor do cliente**, e rode sempre com
 `LAP_DATA` próprio. A trava de força bruta é por IP e dura 15 minutos: o teste

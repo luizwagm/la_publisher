@@ -174,7 +174,7 @@ async function oauthRetorno(req, res, plataforma) {
   else if (plataforma === "youtube") r = await youtube.trocarCodigo(args);
   else return paginaSimples(res, 400, "Plataforma inválida", plataforma);
 
-  const nomes = [];
+  const nomes = [], ids = [];
   for (const c of r.contas) {
     const existente = db.prepare("SELECT id FROM contas WHERE plataforma=? AND externo_id=?").get(c.plataforma, c.externo_id);
     const campos = {
@@ -186,16 +186,35 @@ async function oauthRetorno(req, res, plataforma) {
     if (existente) {
       db.prepare(`UPDATE contas SET nome=?,token=?,refresh=?,expira=?,escopos=?,meta=?,ativo=1,ultimo_erro=NULL,atualizado=? WHERE id=?`)
         .run(campos.nome, campos.token, campos.refresh, campos.expira, campos.escopos, campos.meta, campos.atualizado, existente.id);
+      ids.push(existente.id);
     } else {
-      db.prepare(`INSERT INTO contas(plataforma,nome,externo_id,token,refresh,expira,escopos,meta,ativo,criado,atualizado)
+      const info = db.prepare(`INSERT INTO contas(plataforma,nome,externo_id,token,refresh,expira,escopos,meta,ativo,criado,atualizado)
                   VALUES(?,?,?,?,?,?,?,?,1,?,?)`)
         .run(campos.plataforma, campos.nome, campos.externo_id, campos.token, campos.refresh,
              campos.expira, campos.escopos, campos.meta, agora(), campos.atualizado);
+      ids.push(Number(info.lastInsertRowid));
     }
     nomes.push(`${PLATAFORMAS[c.plataforma]?.rotulo || c.plataforma}: ${c.nome}`);
   }
   auditar({ userId: pend.userId, nome: pend.nomeUsuario }, "conectar-conta", `${plataforma} → ${nomes.join(" | ")}`, S.clientIp(req));
   registrar("ok", `Conta(s) conectada(s): ${nomes.join(" | ")}`, { plataforma });
+
+  /* Conexão de AUTOATENDIMENTO: quem autorizou não é operador do painel, é o
+     dono da conta clicando num link que o site dele gerou. As contas nascem
+     amarradas àquele cliente e o navegador volta para o site de origem.
+     `require` aqui dentro (e não no topo) para não criar ciclo com o api.js,
+     que já depende deste arquivo. */
+  if (pend.conexaoId) {
+    const fim = require("./api").concluirConexao(pend.conexaoId, ids);
+    if (fim?.retorno_url) {
+      const sep = fim.retorno_url.includes("?") ? "&" : "?";
+      res.writeHead(302, { Location: `${fim.retorno_url}${sep}conexao=ok`, "Cache-Control": "no-store" });
+      return res.end();
+    }
+    return paginaSimples(res, 200, "Conta conectada",
+      `${nomes.join(" · ")} — já pode fechar esta janela e voltar ao painel do seu site.`);
+  }
+
   return paginaSimples(res, 200, "Conta conectada", nomes.join(" · "));
 }
 
@@ -698,6 +717,102 @@ async function rotaApi(req, res, p) {
     return json(res, 200, db.prepare("SELECT * FROM auditoria ORDER BY id DESC LIMIT 300").all());
   }
 
+  /* ========================= CLIENTES DA API ==============================
+     Um "cliente" é um SITE autorizado a acionar o LA Publisher. O segredo é
+     mostrado UMA única vez, na criação — depois nem o administrador consegue
+     lê-lo de volta (fica cifrado no cofre e só o servidor o usa para conferir
+     a assinatura). Perdeu, gera outro. */
+  if (p === "clientes" || /^clientes\/\d+/.test(p)) {
+    if (s.perfil !== "admin") return json(res, 403, { error: "Apenas o administrador gerencia as chaves da API." });
+    const id = p.match(/^clientes\/(\d+)/)?.[1];
+
+    if (req.method === "GET" && !id) {
+      const linhas = db.prepare("SELECT id,nome,chave,origem,webhook_url,ativo,criado,ultimo_uso,chamadas FROM clientes_api ORDER BY id").all();
+      for (const l of linhas) {
+        l.contas = db.prepare(`SELECT c.id, c.plataforma, c.nome, c.apelido, c.ativo
+          FROM contas c JOIN clientes_contas cc ON cc.conta_id=c.id WHERE cc.cliente_id=?`).all(l.id);
+        l.publicacoes = db.prepare("SELECT COUNT(*) c FROM posts WHERE cliente_id=?").get(l.id).c;
+        l.webhooks_falhos = db.prepare("SELECT COUNT(*) c FROM webhooks WHERE cliente_id=? AND status='falhou'").get(l.id).c;
+      }
+      return json(res, 200, linhas);
+    }
+
+    if (req.method === "POST" && !id) {
+      const b = await lerCorpo(req, 20000);
+      const nome = S.soTexto(b.nome).slice(0, 120);
+      if (!nome) return json(res, 400, { error: "Dê um nome ao cliente (ex.: BemEstarClinic)." });
+      const origem = String(b.origem || "").trim().replace(/\/+$/, "");
+      if (origem && !/^https?:\/\/[^\s/]+$/i.test(origem))
+        return json(res, 400, { error: "A origem precisa ser só o endereço do site (https://exemplo.com), sem caminho." });
+      const webhook = String(b.webhook_url || "").trim();
+      if (webhook && origem) {
+        try { if (new URL(webhook).origin !== new URL(origem).origin) return json(res, 400, { error: "O webhook precisa estar na mesma origem do site." }); }
+        catch { return json(res, 400, { error: "Webhook inválido." }); }
+      }
+      const chave = "lap_" + crypto.randomBytes(12).toString("hex");
+      const segredo = crypto.randomBytes(32).toString("hex");
+      db.prepare(`INSERT INTO clientes_api(nome,chave,segredo,origem,webhook_url,ativo,criado) VALUES(?,?,?,?,?,1,?)`)
+        .run(nome, chave, cifrar(segredo), origem || null, webhook || null, agora());
+      auditar(s, "criar-chave-api", nome, ip);
+      /* Única vez que o segredo aparece. */
+      return json(res, 200, { ok: true, chave, segredo, aviso: "Guarde o segredo agora — ele não é exibido de novo." });
+    }
+
+    if (req.method === "PUT" && id) {
+      const b = await lerCorpo(req, 20000);
+      const sets = [], args = [];
+      if (b.nome !== undefined) { sets.push("nome=?"); args.push(S.soTexto(b.nome).slice(0, 120)); }
+      if (b.ativo !== undefined) { sets.push("ativo=?"); args.push(Number(b.ativo) ? 1 : 0); }
+      if (b.origem !== undefined) {
+        const o = String(b.origem).trim().replace(/\/+$/, "");
+        if (o && !/^https?:\/\/[^\s/]+$/i.test(o)) return json(res, 400, { error: "Origem inválida." });
+        sets.push("origem=?"); args.push(o || null);
+      }
+      if (b.webhook_url !== undefined) { sets.push("webhook_url=?"); args.push(String(b.webhook_url).trim() || null); }
+      if (b.novo_segredo) {
+        const segredo = crypto.randomBytes(32).toString("hex");
+        db.prepare("UPDATE clientes_api SET segredo=? WHERE id=?").run(cifrar(segredo), id);
+        auditar(s, "trocar-segredo-api", `#${id}`, ip);
+        if (sets.length) db.prepare(`UPDATE clientes_api SET ${sets.join(",")} WHERE id=?`).run(...args, id);
+        return json(res, 200, { ok: true, segredo, aviso: "Segredo novo — o anterior parou de valer agora." });
+      }
+      if (sets.length) db.prepare(`UPDATE clientes_api SET ${sets.join(",")} WHERE id=?`).run(...args, id);
+      auditar(s, "editar-chave-api", `#${id}`, ip);
+      return json(res, 200, { ok: true });
+    }
+
+    if (req.method === "DELETE" && id) {
+      const n = db.prepare("SELECT COUNT(*) c FROM posts WHERE cliente_id=?").get(id).c;
+      if (n) return json(res, 409, { error: `Esta chave já publicou ${n} matéria(s) — desative em vez de excluir, para o histórico continuar legível.` });
+      db.prepare("DELETE FROM clientes_contas WHERE cliente_id=?").run(id);
+      db.prepare("DELETE FROM conexoes WHERE cliente_id=?").run(id);
+      db.prepare("DELETE FROM clientes_api WHERE id=?").run(id);
+      auditar(s, "excluir-chave-api", `#${id}`, ip);
+      return json(res, 200, { ok: true });
+    }
+
+    /* vincular/desvincular conta à mão, sem passar pelo autoatendimento */
+    const mVinc = p.match(/^clientes\/(\d+)\/contas\/(\d+)$/);
+    if (mVinc && req.method === "POST") {
+      db.prepare("INSERT OR IGNORE INTO clientes_contas(cliente_id,conta_id,criado) VALUES(?,?,?)").run(mVinc[1], mVinc[2], agora());
+      auditar(s, "vincular-conta-api", `cliente #${mVinc[1]} ← conta #${mVinc[2]}`, ip);
+      return json(res, 200, { ok: true });
+    }
+    if (mVinc && req.method === "DELETE") {
+      db.prepare("DELETE FROM clientes_contas WHERE cliente_id=? AND conta_id=?").run(mVinc[1], mVinc[2]);
+      auditar(s, "desvincular-conta-api", `cliente #${mVinc[1]} ✂ conta #${mVinc[2]}`, ip);
+      return json(res, 200, { ok: true });
+    }
+  }
+
+  /* Entregas de webhook — para o admin ver por que o site do cliente não soube. */
+  if (p === "webhooks" && req.method === "GET") {
+    if (s.perfil !== "admin") return json(res, 403, { error: "Sem permissão." });
+    return json(res, 200, db.prepare(`SELECT w.id,w.evento,w.status,w.tentativas,w.resposta,w.url,w.criado,w.atualizado,
+      w.post_id, c.nome cliente FROM webhooks w LEFT JOIN clientes_api c ON c.id=w.cliente_id
+      ORDER BY w.id DESC LIMIT 100`).all());
+  }
+
   /* ------------------------------ USUÁRIOS -------------------------------- */
   if (p === "usuarios" || /^usuarios\/\d+$/.test(p)) {
     if (s.perfil !== "admin") return json(res, 403, { error: "Apenas o administrador gerencia usuários." });
@@ -852,4 +967,10 @@ function receberArquivo(req, res, postId, s, ip) {
   });
 }
 
-module.exports = { handlePainel, CSP, MIDIA_DIR, MIMES_OK };
+/* camposDoPost e oauthPendentes são compartilhados com a API pública (api.js):
+   a higienização da matéria precisa ser a MESMA nos dois caminhos, e o OAuth
+   de autoatendimento reaproveita o mesmo redirect_uri já cadastrado na Meta. */
+module.exports = {
+  handlePainel, CSP, MIDIA_DIR, MIMES_OK, MIMES_IMAGEM, MIMES_VIDEO, EXT_DE_MIME,
+  camposDoPost, oauthPendentes, redirectUri, paginaSimples, json, jsonSeguro,
+};

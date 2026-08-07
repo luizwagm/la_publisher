@@ -15,6 +15,7 @@
    ========================================================================== */
 const path = require("node:path");
 const fs = require("node:fs");
+const crypto = require("node:crypto");
 const { db, ROOT, getC, cifrar, decifrar, agora, registrar } = require("./banco");
 const { PLATAFORMAS, validarDestino } = require("./regras");
 const meta = require("./plataformas/meta");
@@ -155,6 +156,91 @@ function atualizarStatusPost(postId) {
   db.prepare("UPDATE posts SET status=?, atualizado=? WHERE id=?").run(status, agora(), postId);
 }
 
+/* ==========================================================================
+   WEBHOOKS — avisar o site que mandou publicar
+
+   Vive em TABELA e não num "dispara e esquece": o site do cliente pode estar
+   fora do ar justamente na hora em que o post entra. Sem fila, o aviso se
+   perderia e o painel dele ficaria mostrando "publicando" para sempre.
+
+   A assinatura é a mesma ideia do conector, na direção contrária: HMAC do
+   segredo do cliente sobre `${timestamp}.${corpo}`. Assim o site tem como
+   provar que o aviso veio mesmo daqui.
+   ========================================================================== */
+const WEBHOOK_TENTATIVAS = 5;
+
+function enfileirarWebhook(clienteId, url, evento, corpo, { postId = null, destinoId = null } = {}) {
+  if (!url || !clienteId) return;
+  try {
+    db.prepare(`INSERT INTO webhooks(cliente_id,post_id,destino_id,url,evento,corpo,status,criado,atualizado)
+                VALUES(?,?,?,?,?,?,'pendente',?,?)`)
+      .run(clienteId, postId, destinoId, url, evento, JSON.stringify(corpo), agora(), agora());
+  } catch (e) { registrar("aviso", "Não consegui enfileirar o webhook: " + e.message, { postId }); }
+}
+
+/* Monta e enfileira o aviso de um destino que acabou de terminar. */
+function avisarDestino(destino, post) {
+  if (!post?.cliente_id || !post.callback_url) return;
+  const publicadosRestantes = db.prepare(
+    "SELECT COUNT(*) c FROM destinos WHERE post_id=? AND status IN ('pendente','agendado','processando')").get(post.id).c;
+  enfileirarWebhook(post.cliente_id, post.callback_url,
+    destino.status === "publicado" ? "publicacao.destino.publicado" : "publicacao.destino.erro", {
+      evento: destino.status === "publicado" ? "publicacao.destino.publicado" : "publicacao.destino.erro",
+      publicacao_id: post.id, origem_ref: post.origem_ref || null,
+      plataforma: destino.plataforma, conta_id: destino.conta_id,
+      status: destino.status, url: destino.url_externa || null, erro: destino.erro || null,
+      tentativas: destino.tentativas, concluida: publicadosRestantes === 0, em: agora(),
+    }, { postId: post.id, destinoId: destino.id });
+}
+
+async function processarWebhooks() {
+  const agoraIso = agora();
+  const pendentes = db.prepare(`SELECT * FROM webhooks WHERE status='pendente'
+    AND (proxima_tentativa IS NULL OR proxima_tentativa <= ?) ORDER BY id LIMIT 20`).all(agoraIso);
+  for (const w of pendentes) {
+    const cliente = db.prepare("SELECT * FROM clientes_api WHERE id=?").get(w.cliente_id);
+    if (!cliente || !cliente.ativo) {
+      db.prepare("UPDATE webhooks SET status='cancelado', resposta='cliente inativo', atualizado=? WHERE id=?").run(agora(), w.id);
+      continue;
+    }
+    const segredo = decifrar(cliente.segredo);
+    const ts = Math.floor(Date.now() / 1000);
+    const assinatura = "sha256=" + crypto.createHmac("sha256", segredo).update(`${ts}.${w.corpo}`).digest("hex");
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), 20_000);
+    let ok = false, resposta = "";
+    try {
+      const r = await fetch(w.url, {
+        method: "POST", signal: ac.signal, body: w.corpo,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "X-LAP-Timestamp": String(ts), "X-LAP-Assinatura": assinatura,
+          "X-LAP-Evento": w.evento, "User-Agent": "LA-Publisher",
+        },
+      });
+      ok = r.ok;
+      resposta = `HTTP ${r.status}`;
+    } catch (e) { resposta = e.name === "AbortError" ? "tempo esgotado" : e.message; }
+    clearTimeout(t);
+
+    const tentativas = (w.tentativas || 0) + 1;
+    if (ok) {
+      db.prepare("UPDATE webhooks SET status='entregue', tentativas=?, resposta=?, atualizado=? WHERE id=?")
+        .run(tentativas, resposta, agora(), w.id);
+    } else if (tentativas >= WEBHOOK_TENTATIVAS) {
+      db.prepare("UPDATE webhooks SET status='falhou', tentativas=?, resposta=?, atualizado=? WHERE id=?")
+        .run(tentativas, resposta, agora(), w.id);
+      registrar("aviso", `Webhook de ${cliente.nome} falhou ${tentativas}× (${resposta}). O site pode consultar por GET /api/v1/publicacoes/${w.post_id}.`,
+        { postId: w.post_id });
+    } else {
+      const espera = Math.pow(5, tentativas - 1);           // 1min, 5min, 25min, ~2h
+      db.prepare("UPDATE webhooks SET tentativas=?, resposta=?, proxima_tentativa=?, atualizado=? WHERE id=?")
+        .run(tentativas, resposta, new Date(Date.now() + espera * 60_000).toISOString(), agora(), w.id);
+    }
+  }
+  return pendentes.length;
+}
+
 /* --------------------------- laço de trabalho ----------------------------- */
 let rodando = false;
 
@@ -215,8 +301,17 @@ async function processarUmaVez() {
         }
       }
       atualizarStatusPost(d.post_id);
+      /* Matéria que veio da API avisa o site assim que o destino conclui —
+         sucesso ou erro. Reler o destino é de propósito: o estado gravado é
+         o que vale, não a variável em memória. */
+      const post = db.prepare("SELECT * FROM posts WHERE id=?").get(d.post_id);
+      const atual = db.prepare("SELECT * FROM destinos WHERE id=?").get(d.id);
+      if (atual && ["publicado", "erro"].includes(atual.status)) avisarDestino(atual, post);
     }
   } finally { rodando = false; }
+  /* Entregar os avisos no mesmo tique: quem está esperando resposta é o
+     painel de outra pessoa. */
+  try { await processarWebhooks(); } catch (e) { registrar("erro", "Falha ao entregar webhooks: " + e.message); }
   return feitos;
 }
 
@@ -237,4 +332,5 @@ module.exports = {
   iniciar, parar, acordar, processarUmaVez, atualizarStatusPost,
   urlPublica, urlDe, caminhoDe, MIDIA_DIR, carregarConta, gravarTokens, appDe, garantirToken,
   TENTATIVAS_MAX, ORDEM_PUBLICACAO,
+  enfileirarWebhook, processarWebhooks, avisarDestino, WEBHOOK_TENTATIVAS,
 };

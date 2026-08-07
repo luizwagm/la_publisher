@@ -214,6 +214,7 @@
     <button class="navbtn" data-tela="materias">✎ Matérias</button>
     <button class="navbtn" data-tela="fila">⇅ Fila <span class="n" id="nFila" hidden>0</span></button>
     <button class="navbtn" data-tela="contas" data-admin-editor>◉ Contas</button>
+    <button class="navbtn" data-tela="sites" data-admin>⇄ Sites (API)</button>
     <button class="navbtn" data-tela="registro">≡ Registro</button>
     <button class="navbtn" data-tela="config" data-admin>⚙ Configurações</button>
     <button class="navbtn" data-tela="usuarios" data-admin>☺ Usuários</button>
@@ -364,6 +365,20 @@
         <div class="card" style="padding:.4rem .6rem"><div id="listaContas"></div></div>
       </section>
 
+      <!-- ---------------------- SITES (API) ---------------------- -->
+      <section class="tela" id="tela-sites">
+        <div class="topo">
+          <div><h2>Sites que publicam pela API</h2>
+            <div class="sub">Cada site recebe uma chave e só enxerga as contas dele.</div></div>
+          <button class="btn btn-p" id="btNovoCliente">+ Novo site</button>
+        </div>
+        <div class="aviso a-info">O site cria a notícia no painel dele, marca as redes e chama
+          <code>POST /api/v1/publicacoes</code>. O LA Publisher publica e devolve o resultado por webhook.
+          Instale <b>conector/cliente-lapublisher.js</b> no site — a referência está em <b>API.md</b>.</div>
+        <div class="card" style="padding:.4rem .6rem"><div id="listaClientes"></div></div>
+        <div class="card"><h3>Últimas entregas de webhook</h3><div class="lista-log" id="listaWebhooks"></div></div>
+      </section>
+
       <!-- ---------------------- REGISTRO ---------------------- -->
       <section class="tela" id="tela-registro">
         <div class="topo"><div><h2>Registro</h2><div class="sub">O que o sistema fez e quem mandou fazer.</div></div>
@@ -505,9 +520,9 @@ function irPara(tela) {
   ULTIMA_TELA = tela === "editor" ? ULTIMA_TELA : tela;
   $$(".tela").forEach((t) => t.classList.toggle("on", t.id === "tela-" + tela));
   $$(".navbtn[data-tela]").forEach((b) => b.classList.toggle("on", b.dataset.tela === tela));
-  const nomes = { painel: "Painel", materias: "Matérias", editor: "Matérias › edição", fila: "Fila", contas: "Contas", registro: "Registro", config: "Configurações", usuarios: "Usuários" };
+  const nomes = { painel: "Painel", materias: "Matérias", editor: "Matérias › edição", fila: "Fila", contas: "Contas", sites: "Sites (API)", registro: "Registro", config: "Configurações", usuarios: "Usuários" };
   $("#migalha").textContent = nomes[tela] || "";
-  ({ painel: carregarPainel, materias: carregarPosts, fila: carregarFila, contas: carregarContas, registro: carregarRegistro, config: carregarConfig, usuarios: carregarUsuarios })[tela]?.();
+  ({ painel: carregarPainel, materias: carregarPosts, fila: carregarFila, contas: carregarContas, sites: carregarSites, registro: carregarRegistro, config: carregarConfig, usuarios: carregarUsuarios })[tela]?.();
 }
 $$(".navbtn[data-tela]").forEach((b) => b.addEventListener("click", () => irPara(b.dataset.tela)));
 $$("[data-nova]").forEach((b) => b.addEventListener("click", () => abrirEditor(null)));
@@ -1061,6 +1076,98 @@ $("#btNovoSite").addEventListener("click", () => modal("Conectar um site do gera
     await api("contas", { method: "POST", corpo: { plataforma: "site", nome: $("#sNome").value, url: $("#sUrl").value, segredo: $("#sSeg").value } });
     carregarContas(); toast("Site conectado.", "ok");
   }));
+
+/* ------------------------------ SITES (API) ---------------------------- */
+async function carregarSites() {
+  const cs = await api("clientes");
+  $("#listaClientes").innerHTML = cs.length ? `<table>
+    <thead><tr><th>Site</th><th>Chave</th><th>Contas que ele pode usar</th><th>Uso</th><th></th></tr></thead>
+    <tbody>${cs.map((c) => `<tr>
+      <td><b>${esc(c.nome)}</b>${c.ativo ? "" : ' <span class="tag t-cancelado">desativado</span>'}
+        <div style="font-size:.75rem;color:var(--dim)">${esc(c.origem || "sem origem cadastrada")}</div>
+        ${c.webhook_url ? `<div style="font-size:.72rem;color:var(--dim)">webhook: ${esc(c.webhook_url)}</div>` : ""}
+        ${c.webhooks_falhos ? `<div style="font-size:.72rem;color:#fb7185">${c.webhooks_falhos} webhook(s) sem entregar</div>` : ""}</td>
+      <td><code class="seg" style="margin:0">${esc(c.chave)}</code></td>
+      <td>${c.contas.length
+        ? c.contas.map((x) => `<span class="pill" style="margin:0 .2rem .2rem 0">${ICONES[x.plataforma] || "•"} ${esc(x.apelido || x.nome)}
+            <a href="#" title="desvincular" onclick="desvincular(${c.id},${x.id});return false" style="color:#fb7185;text-decoration:none">✕</a></span>`).join("")
+        : '<span style="color:var(--dim);font-size:.82rem">nenhuma — o site pede um link de conexão pela API</span>'}
+        <div style="margin-top:.3rem"><button class="btn btn-g btn-xs" onclick="vincularConta(${c.id})">+ vincular à mão</button></div></td>
+      <td style="white-space:nowrap;color:var(--muted);font-size:.82rem">${c.publicacoes} matéria(s)<br>
+        <span style="color:var(--dim)">${c.chamadas || 0} chamadas</span><br>
+        <span style="color:var(--dim)">${c.ultimo_uso ? dataHoraBR(c.ultimo_uso) : "nunca usou"}</span></td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn btn-g btn-xs" onclick="novoSegredo(${c.id},'${esc(c.nome)}')">novo segredo</button>
+        <button class="btn btn-g btn-xs" onclick="alternarCliente(${c.id},${c.ativo ? 0 : 1})">${c.ativo ? "desativar" : "ativar"}</button>
+        <button class="btn btn-d btn-xs" onclick="excluirCliente(${c.id})">excluir</button></td>
+    </tr>`).join("")}</tbody></table>` : '<div class="vazio">Nenhum site autorizado ainda.</div>';
+
+  const ws = await api("webhooks");
+  $("#listaWebhooks").innerHTML = ws.length
+    ? ws.slice(0, 40).map((w) => `<div><span class="${w.status === "entregue" ? "ok" : w.status === "falhou" ? "erro" : "aviso"}">[${esc(w.status)}]</span>
+        <b>${dataHoraBR(w.atualizado || w.criado)}</b> ${esc(w.cliente || "?")} · ${esc(w.evento)}
+        ${w.tentativas > 1 ? `· ${w.tentativas} tentativas` : ""} ${w.resposta ? "· " + esc(w.resposta) : ""}</div>`).join("")
+    : '<div style="color:var(--dim)">Nenhuma entrega ainda.</div>';
+}
+$("#btNovoCliente").addEventListener("click", () => modal("Novo site autorizado", `
+  <label for="nsNome">Nome do site</label><input id="nsNome" placeholder="BemEstarClinic">
+  <label for="nsOrigem">Endereço do site</label><input id="nsOrigem" placeholder="https://bemestarclinic.com">
+  <div class="dica">Só o endereço, sem caminho. É contra ele que validamos o webhook e o retorno da conexão —
+    é o que impede a chave de virar trampolim para outro domínio.</div>
+  <label for="nsWebhook">Webhook (opcional)</label><input id="nsWebhook" placeholder="https://bemestarclinic.com/api/lapublisher/retorno">
+  <div class="dica">Para onde avisamos quando cada rede conclui. Precisa estar na mesma origem.</div>`,
+  async () => {
+    const r = await api("clientes", { method: "POST", corpo: {
+      nome: $("#nsNome").value, origem: $("#nsOrigem").value, webhook_url: $("#nsWebhook").value } });
+    carregarSites();
+    mostrarSegredo(r.chave, r.segredo);
+  }, "Criar"));
+
+function mostrarSegredo(chave, segredo) {
+  modal("Guarde o segredo agora", `
+    <div class="aviso a-alerta">Esta é a <b>única vez</b> que o segredo aparece. Ele fica cifrado no cofre e
+      nem o administrador consegue lê-lo depois. Perdeu, gere outro.</div>
+    <label>Chave (pode aparecer em log, não é secreta)</label>
+    <code class="seg">${esc(chave)}</code>
+    <label>Segredo</label>
+    <code class="seg">${esc(segredo)}</code>
+    <div class="dica">No site, guarde os dois em variável de ambiente — nunca no código versionado.</div>`,
+    async () => { }, "Já guardei");
+}
+async function novoSegredo(id, nome) {
+  if (!confirm(`Gerar um segredo novo para ${nome}?\n\nO atual para de funcionar na hora — o site fica sem publicar até você atualizar lá.`)) return;
+  try {
+    const r = await api("clientes/" + id, { method: "PUT", corpo: { novo_segredo: true } });
+    mostrarSegredo("(a chave não muda)", r.segredo);
+    carregarSites();
+  } catch (e) { toast(e.message, "erro"); }
+}
+async function alternarCliente(id, ativo) {
+  try { await api("clientes/" + id, { method: "PUT", corpo: { ativo } }); carregarSites(); } catch (e) { toast(e.message, "erro"); }
+}
+async function excluirCliente(id) {
+  if (!confirm("Excluir este site? A chave para de funcionar imediatamente.")) return;
+  try { await api("clientes/" + id, { method: "DELETE" }); carregarSites(); toast("Removido.", "ok"); }
+  catch (e) { toast(e.message, "erro"); }
+}
+async function desvincular(clienteId, contaId) {
+  if (!confirm("Tirar o acesso deste site a essa conta?")) return;
+  try { await api(`clientes/${clienteId}/contas/${contaId}`, { method: "DELETE" }); carregarSites(); }
+  catch (e) { toast(e.message, "erro"); }
+}
+async function vincularConta(clienteId) {
+  await carregarContas();
+  if (!CONTAS.length) return toast("Não há contas conectadas ainda.", "erro");
+  modal("Vincular conta a este site", `
+    <div class="dica" style="margin-bottom:.5rem">O caminho normal é o site pedir um link de conexão pela API e o
+      dono da conta autorizar. Isto aqui é o atalho manual, para contas que você já conectou.</div>
+    <label for="vcConta">Conta</label>
+    <select id="vcConta">${CONTAS.map((c) => `<option value="${c.id}">${esc(REGRAS.plataformas[c.plataforma]?.rotulo || c.plataforma)} — ${esc(c.apelido || c.nome)}</option>`).join("")}</select>`,
+    async () => {
+      await api(`clientes/${clienteId}/contas/${$("#vcConta").value}`, { method: "POST" });
+      carregarSites(); toast("Vinculada.", "ok");
+    }, "Vincular");
+}
 
 /* ------------------------------ REGISTRO ------------------------------ */
 async function carregarRegistro() {

@@ -21,6 +21,7 @@ const { db, getC } = require("./banco");
 const S = require("./seguranca");
 const { handlePainel } = require("./painel");
 const { handlePublico } = require("./publico");
+const { handleApi } = require("./api");
 const fila = require("./fila");
 
 const ROOT = __dirname;
@@ -53,6 +54,11 @@ const servidor = http.createServer((req, res) => {
      de outro site não consegue nem ler a resposta nem mandar cabeçalho
      próprio — é o que faz a trava de CSRF valer. */
   if (req.method === "OPTIONS") { res.writeHead(405); return res.end(); }
+
+  /* --------------------- API pública dos sites (/api/v1) -----------------
+     Vem ANTES do painel: é o caminho mais quente do sistema e não depende de
+     sessão. Também responde /conectar/{token}, a página de autoatendimento. */
+  if (handleApi(req, res, p)) return;
 
   /* ------------------------------- painel -------------------------------- */
   if (handlePainel(req, res, p)) return;
@@ -137,6 +143,13 @@ servidor.listen(PORT, process.env.HOST || "127.0.0.1", () => {
     ? `  · Endereço público: ${pub}`
     : `  ⚠ Endereço público NÃO configurado — Instagram, Facebook e os sites precisam
     baixar a mídia por URL. Configure em /restrito → Configurações.`);
+  const clientes = db.prepare("SELECT COUNT(*) c FROM clientes_api WHERE ativo=1").get().c;
+  if (clientes) console.log(`  · API: ${clientes} site(s) autorizado(s) em /api/v1`);
+  if (process.env.LAP_MIDIA_LOCAL === "1") {
+    console.log(`\n  ⚠⚠ LAP_MIDIA_LOCAL=1 — a trava de SSRF na busca de mídia está DESLIGADA.`);
+    console.log(`     Isso existe só para a bateria de testes. NUNCA em produção:`);
+    console.log(`     um cliente poderia mandar o sistema buscar endereços internos.\n`);
+  }
   fila.iniciar({ intervaloSegundos: 30 });
   console.log(`  · Fila de publicação rodando a cada 30s\n`);
 });

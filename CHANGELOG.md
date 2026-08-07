@@ -19,6 +19,67 @@ lateral e em `GET /saude`. Toda alteração de versão precisa de uma linha aqui
 
 ---
 
+## 1.2.0 — 2026-08-07
+
+### API pública: agora o site é quem manda publicar
+
+Até aqui o LA Publisher **empurrava** a matéria para o blog do site. Faltava o
+sentido contrário, que é o que o cliente pede: a pessoa escreve a notícia no
+painel do site dela, marca *Instagram* e *Facebook*, e o site aciona o
+LA Publisher.
+
+**`/api/v1`** — `ping` · `plataformas` · `contas` · `conexoes` · `publicacoes`
+(criar, consultar, retentar, cancelar). Referência completa em
+[API.md](API.md).
+
+**Isolamento entre clientes** é a regra que sustenta tudo: cada chave só
+enxerga as contas dela, para listar, publicar e consultar. A chave de um site
+não publica nem lê nada de outro — coberto por teste, porque é o pior acidente
+possível neste sistema.
+
+**Autenticação por assinatura**, não por token estático: HMAC-SHA256 sobre
+`${ts}.${MÉTODO}.${caminho-com-query}.${corpo}`, válida por 5 minutos. Token em
+cabeçalho vaza em log de proxy e vale para sempre; a assinatura muda a cada
+chamada e não se reaproveita em outra rota. (A primeira versão assinava só o
+caminho — a bateria pegou: `?origem_ref=` podia ser trocado no meio do
+caminho.)
+
+**Idempotência por `origem_ref`**: repetir a chamada — por timeout ou duplo
+clique — devolve a publicação que já existe, com `"repetida": true`, em vez de
+criar um segundo post no Instagram. Garantida por índice único parcial, então
+vale até para duas chamadas simultâneas.
+
+**Autoatendimento de contas**: `POST /conexoes` devolve um link de uso único
+(30 min) que o site entrega ao dono da conta. Ele autoriza na própria
+plataforma e a conta nasce amarrada àquele site. A `retorno_url` é validada
+contra a origem cadastrada — sem isso a chave viraria trampolim de
+redirecionamento com o nosso domínio na barra.
+
+**Mídia por URL**, com trava de SSRF: o endereço é resolvido e conferido
+contra faixas privadas **antes** de qualquer conexão, e de novo a cada
+redirecionamento. Sem isso, um cliente poderia mandar o sistema buscar
+`169.254.169.254` (metadados de nuvem) ou o próprio `/restrito`. O tipo do
+arquivo continua vindo do conteúdo, nunca do `Content-Type`.
+
+**Webhooks** assinados com o segredo do cliente, em tabela e com retentativa
+(1min, 5min, 25min, 2h). Em fila, e não "dispara e esquece", porque o site pode
+estar fora do ar justamente na hora — e aí o painel dele ficaria mostrando
+"publicando" para sempre.
+
+**No painel**: tela *Sites (API)* — cria a chave (segredo exibido **uma única
+vez**), mostra quais contas cada site pode usar, uso, e as últimas entregas de
+webhook.
+
+**Para os sites**: `conector/cliente-lapublisher.js`, drop-in sem dependência
+de npm, com `publicar()`, `contas()`, `linkDeConexao()`, `status()` e
+`conferirWebhook()`.
+
+**Testes**: nova bateria `testes/api.cjs` (**37/37**) cobrindo isolamento,
+assinatura, replay, reuso de assinatura entre rotas, idempotência, SSRF,
+webhook assinado e troca de segredo. Somadas: 110 + 37 + 32.
+
+---
+
 ## 1.1.6 — 2026-08-07
 
 ### Foto no Instagram falhava com "Media ID is not available"

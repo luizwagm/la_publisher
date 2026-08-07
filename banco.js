@@ -110,6 +110,43 @@ db.exec(`
     post_id INTEGER, destino_id INTEGER, plataforma TEXT,
     nivel TEXT DEFAULT 'info', mensagem TEXT, detalhe TEXT, ts TEXT);
 
+  /* ==================================================================
+     API PÚBLICA — um "cliente" é um SITE que aciona o LA Publisher.
+
+     Inversão de sentido em relação ao conector: lá nós empurramos a matéria
+     para o site; aqui o site é quem manda publicar nas redes.
+
+     A regra que sustenta tudo: **cada chave só enxerga as contas dela**. Sem
+     isso, a chave do site do BemEstar publicaria no Instagram de outro
+     cliente — que é o pior acidente possível neste sistema.
+     ================================================================== */
+  CREATE TABLE IF NOT EXISTS clientes_api (id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL, chave TEXT NOT NULL UNIQUE, segredo TEXT NOT NULL,
+    origem TEXT, webhook_url TEXT, ativo INTEGER DEFAULT 1,
+    criado TEXT, ultimo_uso TEXT, chamadas INTEGER DEFAULT 0);
+
+  -- quais contas cada cliente pode usar (nasce do autoatendimento)
+  CREATE TABLE IF NOT EXISTS clientes_contas (
+    cliente_id INTEGER NOT NULL, conta_id INTEGER NOT NULL, criado TEXT,
+    PRIMARY KEY (cliente_id, conta_id));
+
+  /* Convite de conexão: link de USO ÚNICO que o site entrega ao dono da
+     conta. Quem clica autoriza na Meta e a conta nasce amarrada àquele
+     cliente. É uma credencial temporária — por isso expira e só serve uma vez. */
+  CREATE TABLE IF NOT EXISTS conexoes (id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cliente_id INTEGER NOT NULL, token TEXT NOT NULL UNIQUE,
+    plataforma TEXT, retorno_url TEXT, status TEXT DEFAULT 'aberto',
+    contas TEXT, expira TEXT, criado TEXT, usado_em TEXT, ip TEXT);
+
+  /* Entrega de webhook. Guardada em tabela (e não disparada e esquecida)
+     porque o site do cliente pode estar fora do ar na hora — sem fila, o
+     aviso se perderia justamente quando mais importa. */
+  CREATE TABLE IF NOT EXISTS webhooks (id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cliente_id INTEGER, post_id INTEGER, destino_id INTEGER,
+    url TEXT NOT NULL, evento TEXT NOT NULL, corpo TEXT,
+    status TEXT DEFAULT 'pendente', tentativas INTEGER DEFAULT 0,
+    proxima_tentativa TEXT, resposta TEXT, criado TEXT, atualizado TEXT);
+
   /* ---------------- auditoria (quem fez o quê) ---------------------------
      Publicar em nome de uma marca é ação com consequência pública. Toda ação
      sensível (login, publicar, conectar/desconectar conta, mexer em usuário)
@@ -118,6 +155,8 @@ db.exec(`
     usuario_id INTEGER, usuario_nome TEXT, acao TEXT, alvo TEXT,
     ip TEXT, ts TEXT);
 
+  CREATE INDEX IF NOT EXISTS idx_wh_pendente ON webhooks(status, proxima_tentativa);
+  CREATE INDEX IF NOT EXISTS idx_cli_chave ON clientes_api(chave);
   CREATE INDEX IF NOT EXISTS idx_dest_post ON destinos(post_id);
   CREATE INDEX IF NOT EXISTS idx_dest_status ON destinos(status, proxima_tentativa);
   CREATE INDEX IF NOT EXISTS idx_midia_post ON midias(post_id, ordem);
@@ -131,7 +170,20 @@ for (const alt of [
   "ALTER TABLE contas ADD COLUMN ultimo_erro TEXT",
   "ALTER TABLE posts ADD COLUMN fonte_url TEXT",
   "ALTER TABLE midias ADD COLUMN alt TEXT",
+  /* Matéria criada pela API: de qual site veio, qual o id dela LÁ (é o que
+     torna o reenvio idempotente) e para onde avisar o resultado. */
+  "ALTER TABLE posts ADD COLUMN cliente_id INTEGER",
+  "ALTER TABLE posts ADD COLUMN origem_ref TEXT",
+  "ALTER TABLE posts ADD COLUMN callback_url TEXT",
 ]) { try { db.exec(alt); } catch { /* já existe */ } }
+/* Índice único parcial: o MESMO site não cria duas matérias com a mesma
+   referência de origem — é isto que impede post duplicado quando o site
+   repete a chamada por timeout ou por clique dobrado. */
+try {
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_origem
+           ON posts(cliente_id, origem_ref)
+           WHERE cliente_id IS NOT NULL AND origem_ref IS NOT NULL AND origem_ref <> ''`);
+} catch { /* banco antigo sem suporte a índice parcial */ }
 
 const getC = (k) => db.prepare("SELECT value FROM config WHERE key=?").get(k)?.value;
 const setC = (k, v) => db.prepare(
