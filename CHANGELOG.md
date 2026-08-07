@@ -19,6 +19,19 @@ lateral e em `GET /saude`. Toda alteração de versão precisa de uma linha aqui
 
 ---
 
+## 1.1.4 — 2026-08-06
+
+- **A URI de retorno do OAuth respondia 400 ao rastreador da Meta.** Descoberto
+  no log de produção: `facebookexternalhit` pediu
+  `/restrito/oauth/retorno/facebook` duas vezes e levou 400 nas duas. A Meta
+  rastreia o endereço de redirecionamento que você cadastra no painel dela, e
+  um 400 faz o validador tratar a URL como quebrada. Visita **sem parâmetro
+  nenhum** agora responde 200 com uma explicação — não afrouxa nada, porque sem
+  `code` não há o que trocar. Pedido **com** parâmetros e `state` inválido
+  continua 400. Quatro testes novos (**110/110**).
+
+---
+
 ## 1.1.3 — 2026-08-06
 
 - **`instalar.sh` não sobrescreve mais o vhost que o certbot ajustou.** O certbot

@@ -99,6 +99,21 @@ function png(w, h) {
       /Allow: \/privacidade/.test(rb.texto) && /Allow: \/exclusao-de-dados/.test(rb.texto) && /Disallow: \/$/m.test(rb.texto));
   }
 
+  /* ---------- 4b. a URI de retorno do OAuth vista por um rastreador -------
+     A Meta CRAWLEIA o endereço de retorno que você cadastra no painel dela.
+     Se ele responder 400 a uma visita sem parâmetros, o validador trata a URL
+     como quebrada (visto no log de produção: dois GET da facebookexternalhit
+     levando 400). Sem parâmetros → 200; com state inválido → 400. */
+  {
+    let r = await req("/restrito/oauth/retorno/facebook");
+    checar("retorno do OAuth sem parâmetros → 200 (o rastreador da Meta passa)", r.status === 200, "status " + r.status);
+    r = await req("/restrito/oauth/retorno/facebook?state=inventado&code=xyz");
+    checar("retorno do OAuth com state inválido → 400", r.status === 400, "status " + r.status);
+    checar("retorno do OAuth não vaza detalhe interno", !/oauthPendentes|client_secret/i.test(r.texto));
+    r = await req("/restrito/oauth/retorno/plataforma-que-nao-existe");
+    checar("retorno de plataforma inventada não explode", r.status === 400 || r.status === 200, "status " + r.status);
+  }
+
   /* ---------------- 5. login ---------------- */
   {
     const mau = await req("/restrito/api/login", { metodo: "POST", corpo: { usuario: "admin", senha: "errada" } });

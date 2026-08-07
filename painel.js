@@ -141,6 +141,17 @@ async function oauthRetorno(req, res, plataforma) {
   const code = u.searchParams.get("code") || "";
   const erroProvedor = u.searchParams.get("error_description") || u.searchParams.get("error");
 
+  /* Visita SEM parâmetro nenhum não é erro: é alguém (ou o rastreador da
+     plataforma) abrindo a URL de retorno na mão. A Meta CRAWLEIA a URI de
+     redirecionamento que você cadastra no painel dela — e um 400 aqui faz o
+     validador dela tratar o endereço como quebrado. Responder 200 com uma
+     explicação é o certo, e não afrouxa nada: sem `code` não há o que trocar.
+     Pedido COM parâmetros e state inválido continua 400. */
+  if (!state && !code && !erroProvedor)
+    return paginaSimples(res, 200, "Página de retorno das plataformas",
+      "É aqui que Instagram, Facebook, TikTok e YouTube devolvem a autorização depois que você conecta uma conta. "
+      + "Não há nada para ver nesta página — comece pelo painel, em Contas.");
+
   const pend = oauthPendentes.get(state);
   oauthPendentes.delete(state);
   if (!pend || pend.plataforma !== plataforma)
