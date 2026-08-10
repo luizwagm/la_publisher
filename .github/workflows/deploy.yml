@@ -1,0 +1,164 @@
+# ==========================================================================
+#  Entrega automática — LA Publisher
+#
+#  Dois trabalhos em sequência: PROVAR e ENTREGAR. O segundo só existe se o
+#  primeiro passar (`needs`), então suíte vermelha não vira serviço no ar.
+#
+#  Aqui isso pesa mais que nos sites: este é o sistema que PUBLICA nas redes dos
+#  clientes. Um defeito aqui não deixa uma página feia — publica errado, ou
+#  duplica, na conta de outra pessoa.
+#
+#  A CHAVE DESTE WORKFLOW NÃO DÁ SHELL: no servidor ela está presa a um
+#  `command=` com `restrict`, provado com ela apontando para um `echo` antes de
+#  ser ligada no deploy.
+# ==========================================================================
+name: Provar e entregar
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: entrega-lapublisher
+  cancel-in-progress: false
+
+jobs:
+  provar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # A mesma linha do servidor. Este projeto usa `node:sqlite`, que mudou de
+      # comportamento entre versões — provar em outra é provar outro programa.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Instalar dependências
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+
+      - name: Todo JavaScript compila
+        run: |
+          erros=0
+          while IFS= read -r f; do
+            node --check "$f" || { echo "ERRO de sintaxe: $f"; erros=1; }
+          done < <(git ls-files '*.js' '*.cjs')
+          exit $erros
+
+      - name: Todo shell script compila
+        run: |
+          erros=0
+          while IFS= read -r f; do
+            bash -n "$f" || { echo "ERRO de sintaxe: $f"; erros=1; }
+          done < <(git ls-files '*.sh')
+          exit $erros
+
+      # O .gitattributes previne o CRLF; isto confere. Prevenção sem
+      # conferência é promessa.
+      - name: Nenhum script com fim de linha do Windows
+        run: |
+          if git ls-files '*.sh' | xargs grep -lP '\r$' 2>/dev/null | grep .; then
+            echo "Os arquivos acima têm CRLF — o bash não roda assim."
+            exit 1
+          fi
+          echo "todos com LF"
+
+      # ==================================================================
+      #  As três baterias, NESTA ORDEM — e a ordem não é arbitrária.
+      #
+      #  A de segurança termina deixando o IP TRAVADO por 15 minutos: o
+      #  último teste dela é justamente a trava de força bruta. Rodá-la
+      #  antes das outras faria as seguintes falharem por bloqueio, e o
+      #  relatório acusaria defeito onde só há a trava funcionando.
+      #
+      #  `LAP_DATA` aponta para um diretório descartável: o banco de prova
+      #  nasce e morre com a execução, sem chegar perto do banco real, que
+      #  guarda os tokens das redes dos clientes.
+      #
+      #  `LAP_MIDIA_LOCAL=1` desliga a trava de SSRF na busca de mídia,
+      #  porque a bateria hospeda a imagem em 127.0.0.1. O próprio servidor
+      #  grita no boot com ela ligada — e ela NUNCA entra em produção.
+      # ==================================================================
+      - name: Subir o Publisher de prova
+        run: |
+          mkdir -p /tmp/lap-teste
+          PORT=5191 LAP_DATA=/tmp/lap-teste LAP_MIDIA_LOCAL=1 node server.js &
+          echo $! > /tmp/lap.pid
+          for i in $(seq 1 25); do
+            curl -s -o /dev/null "http://127.0.0.1:5191/" && break
+            sleep 1
+          done
+
+      - name: Bateria da API pública (37)
+        run: node testes/api.cjs
+
+      # A de integração precisa do "site falso" de pé: ele imita um site do
+      # gerador, imprime o segredo compartilhado e recebe o webhook de volta.
+      # É o que prova o ciclo inteiro — aceite, publicação e confirmação.
+      - name: Bateria de ponta a ponta (32)
+        run: |
+          node testes/site-falso.cjs > /tmp/site-falso.log 2>&1 &
+          echo $! > /tmp/site.pid
+          sleep 5
+          SEGREDO=$(grep -oE '[a-f0-9]{16,}' /tmp/site-falso.log | head -1)
+          if [ -z "$SEGREDO" ]; then
+            echo "não consegui capturar o segredo do site falso:"; cat /tmp/site-falso.log; exit 1
+          fi
+          node testes/integracao.cjs "$SEGREDO"
+
+      - name: Bateria de segurança (110) — por último, ela trava o IP
+        run: node testes/seguranca.cjs
+
+      # Mata PELO PID guardado, nunca por `pkill -f "node server.js"`: no
+      # servidor de produção todos os sites rodam exatamente essa linha com o
+      # mesmo usuário, e um pkill assim derrubou a Imobiliária inteira. O
+      # hábito se pega aqui.
+      - name: Encerrar os processos de prova
+        if: always()
+        run: |
+          for p in /tmp/site.pid /tmp/lap.pid; do
+            [ -f "$p" ] && kill "$(cat "$p")" 2>/dev/null || true
+          done
+          echo "encerrados"
+
+  entregar:
+    needs: provar
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Preparar a chave e o host conhecido
+        env:
+          CHAVE: ${{ secrets.SSH_CHAVE_ENTREGA }}
+          HOST_CONHECIDO: ${{ secrets.SSH_HOST_CONHECIDO }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$CHAVE" > ~/.ssh/id_entrega
+          chmod 600 ~/.ssh/id_entrega
+          printf '%s\n' "$HOST_CONHECIDO" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Pedir a entrega
+        env:
+          DESTINO: ${{ secrets.SSH_DESTINO }}
+        run: |
+          set -o pipefail
+          ssh -T -i ~/.ssh/id_entrega \
+              -o BatchMode=yes -o ConnectTimeout=20 \
+              -o StrictHostKeyChecking=yes \
+              "$DESTINO" 2>&1 | tee saida-da-entrega.txt
+
+      - name: Guardar o log da entrega
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: log-da-entrega
+          path: saida-da-entrega.txt
+          retention-days: 30
+          if-no-files-found: ignore
