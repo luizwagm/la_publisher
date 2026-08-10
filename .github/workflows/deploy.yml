@@ -4,13 +4,14 @@
 #  Dois trabalhos em sequência: PROVAR e ENTREGAR. O segundo só existe se o
 #  primeiro passar (`needs`), então suíte vermelha não vira serviço no ar.
 #
-#  Aqui isso pesa mais que nos sites: este é o sistema que PUBLICA nas redes dos
-#  clientes. Um defeito aqui não deixa uma página feia — publica errado, ou
+#  Aqui isso pesa mais que nos sites: este é o sistema que PUBLICA nas redes
+#  dos clientes. Um defeito aqui não deixa uma página feia — publica errado, ou
 #  duplica, na conta de outra pessoa.
 #
 #  A CHAVE DESTE WORKFLOW NÃO DÁ SHELL: no servidor ela está presa a um
-#  `command=` com `restrict`, provado com ela apontando para um `echo` antes de
-#  ser ligada no deploy.
+#  `command=` com `restrict`. Provado com ela apontando para um `echo` antes de
+#  ser ligada no deploy — pedir o cofre de tokens, pedir /etc/shadow e abrir
+#  terminal devolveram o echo, e o túnel para a porta 5190 foi recusado.
 # ==========================================================================
 name: Provar e entregar
 
@@ -69,62 +70,69 @@ jobs:
           echo "todos com LF"
 
       # ==================================================================
-      #  As três baterias, NESTA ORDEM — e a ordem não é arbitrária.
+      #  CADA BATERIA COM SEU PRÓPRIO SERVIDOR E SEU PRÓPRIO BANCO.
       #
-      #  A de segurança termina deixando o IP TRAVADO por 15 minutos: o
-      #  último teste dela é justamente a trava de força bruta. Rodá-la
-      #  antes das outras faria as seguintes falharem por bloqueio, e o
-      #  relatório acusaria defeito onde só há a trava funcionando.
+      #  Elas não foram escritas para dividir estado, e dividir custou caro: a
+      #  de API cria uma conta de site apontando para a porta 5195 (onde não há
+      #  nada), e a de integração pegava ESSA conta em vez da dela. O Publisher
+      #  tentava falar com um endereço morto e a bateria inteira caía com
+      #  "Falha de rede ao falar com a plataforma" — um erro que parecia de rede
+      #  e era de isolamento.
       #
-      #  `LAP_DATA` aponta para um diretório descartável: o banco de prova
-      #  nasce e morre com a execução, sem chegar perto do banco real, que
-      #  guarda os tokens das redes dos clientes.
+      #  A causa foi consertada dentro da própria bateria, que agora procura a
+      #  conta PELO NOME. O isolamento fica assim mesmo: é como o README manda
+      #  rodar, e é o que impede a próxima bateria de herdar sujeira da
+      #  anterior.
       #
-      #  `LAP_MIDIA_LOCAL=1` desliga a trava de SSRF na busca de mídia,
-      #  porque a bateria hospeda a imagem em 127.0.0.1. O próprio servidor
-      #  grita no boot com ela ligada — e ela NUNCA entra em produção.
+      #  A ORDEM também importa: a de segurança termina TRAVANDO O IP por 15
+      #  minutos — o último teste dela é a trava de força bruta. Ela vem por
+      #  último para não fazer as outras falharem por bloqueio.
+      #
+      #  Cada passo sobe, espera responder, roda e mata PELO PID guardado.
+      #  Nunca por pkill com o nome do comando: no servidor de produção todos os
+      #  sites rodam a mesma linha com o mesmo usuário, e um pkill assim
+      #  derrubou a Imobiliária inteira.
+      #
+      #  LAP_DATA descartável a cada bateria: o banco de prova nasce e morre com
+      #  a execução, longe do banco real, que guarda os tokens das redes dos
+      #  clientes. LAP_MIDIA_LOCAL=1 desliga a trava de SSRF porque a bateria
+      #  hospeda a imagem em 127.0.0.1 — o servidor grita no boot com ela, e ela
+      #  nunca entra em produção.
       # ==================================================================
-      - name: Subir o Publisher de prova
-        run: |
-          mkdir -p /tmp/lap-teste
-          PORT=5191 LAP_DATA=/tmp/lap-teste LAP_MIDIA_LOCAL=1 node server.js &
-          echo $! > /tmp/lap.pid
-          for i in $(seq 1 25); do
-            curl -s -o /dev/null "http://127.0.0.1:5191/" && break
-            sleep 1
-          done
-
       - name: Bateria da API pública (37)
-        run: node testes/api.cjs
+        run: |
+          mkdir -p /tmp/lap-api
+          PORT=5191 LAP_DATA=/tmp/lap-api LAP_MIDIA_LOCAL=1 node server.js & PID=$!
+          for i in $(seq 1 25); do curl -sf -o /dev/null http://127.0.0.1:5191/ && break; sleep 1; done
+          node testes/api.cjs; R=$?
+          kill "$PID" 2>/dev/null || true
+          exit $R
 
-      # A de integração precisa do "site falso" de pé: ele imita um site do
-      # gerador, imprime o segredo compartilhado e recebe o webhook de volta.
-      # É o que prova o ciclo inteiro — aceite, publicação e confirmação.
       - name: Bateria de ponta a ponta (32)
         run: |
-          node testes/site-falso.cjs > /tmp/site-falso.log 2>&1 &
-          echo $! > /tmp/site.pid
-          sleep 5
-          SEGREDO=$(grep -oE '[a-f0-9]{16,}' /tmp/site-falso.log | head -1)
+          mkdir -p /tmp/lap-int
+          PORT=5191 LAP_DATA=/tmp/lap-int LAP_MIDIA_LOCAL=1 node server.js & PUBPID=$!
+          for i in $(seq 1 25); do curl -sf -o /dev/null http://127.0.0.1:5191/ && break; sleep 1; done
+          node testes/site-falso.cjs > /tmp/site-falso.log 2>&1 & SITEPID=$!
+          for i in $(seq 1 20); do curl -sf -o /dev/null http://127.0.0.1:5192/ && break; sleep 1; done
+          SEGREDO=$(grep -oE 'SEGREDO=[a-f0-9]+' /tmp/site-falso.log | cut -d= -f2)
           if [ -z "$SEGREDO" ]; then
-            echo "não consegui capturar o segredo do site falso:"; cat /tmp/site-falso.log; exit 1
+            echo "não capturei o segredo do site falso:"; cat /tmp/site-falso.log
+            kill "$SITEPID" "$PUBPID" 2>/dev/null || true
+            exit 1
           fi
-          node testes/integracao.cjs "$SEGREDO"
+          node testes/integracao.cjs "$SEGREDO"; R=$?
+          kill "$SITEPID" "$PUBPID" 2>/dev/null || true
+          exit $R
 
       - name: Bateria de segurança (110) — por último, ela trava o IP
-        run: node testes/seguranca.cjs
-
-      # Mata PELO PID guardado, nunca por `pkill -f "node server.js"`: no
-      # servidor de produção todos os sites rodam exatamente essa linha com o
-      # mesmo usuário, e um pkill assim derrubou a Imobiliária inteira. O
-      # hábito se pega aqui.
-      - name: Encerrar os processos de prova
-        if: always()
         run: |
-          for p in /tmp/site.pid /tmp/lap.pid; do
-            [ -f "$p" ] && kill "$(cat "$p")" 2>/dev/null || true
-          done
-          echo "encerrados"
+          mkdir -p /tmp/lap-seg
+          PORT=5191 LAP_DATA=/tmp/lap-seg LAP_MIDIA_LOCAL=1 node server.js & PID=$!
+          for i in $(seq 1 25); do curl -sf -o /dev/null http://127.0.0.1:5191/ && break; sleep 1; done
+          node testes/seguranca.cjs; R=$?
+          kill "$PID" 2>/dev/null || true
+          exit $R
 
   entregar:
     needs: provar
@@ -141,6 +149,9 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$CHAVE" > ~/.ssh/id_entrega
           chmod 600 ~/.ssh/id_entrega
+          # Host FIXADO, não aceito na hora: com StrictHostKeyChecking=no,
+          # qualquer servidor que responda no meio do caminho receberia a
+          # conexão — e a chave junto.
           printf '%s\n' "$HOST_CONHECIDO" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
@@ -149,6 +160,8 @@ jobs:
           DESTINO: ${{ secrets.SSH_DESTINO }}
         run: |
           set -o pipefail
+          # Nenhum comando é enviado: o servidor ignora o que viesse aqui e roda
+          # o command= preso à chave.
           ssh -T -i ~/.ssh/id_entrega \
               -o BatchMode=yes -o ConnectTimeout=20 \
               -o StrictHostKeyChecking=yes \

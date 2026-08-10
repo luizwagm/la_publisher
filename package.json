@@ -1,6 +1,6 @@
 {
   "name": "la-publisher",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Publicação automática de postagens em Instagram, Facebook, TikTok, YouTube e sites/blogs — Node.js + SQLite, sem dependências externas.",
   "private": true,
   "main": "server.js",

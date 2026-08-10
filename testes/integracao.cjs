@@ -60,8 +60,20 @@ const assinar = (segredo, ts, corpo) =>
   checar("endereço público configurado", (await api("config")).url_publica === PUB);
 
   await api("contas", { metodo: "POST", corpo: { plataforma: "site", nome: "Site Falso", url: SITE, segredo: SEGREDO } });
-  const conta = (await api("contas")).find((c) => c.plataforma === "site");
+  /* PELO NOME, e não pela plataforma. `find(c => c.plataforma === "site")`
+     devolve a PRIMEIRA conta de site do banco — que num banco compartilhado é a
+     de outra bateria, não a nossa.
+     A de API cria uma conta de site apontando para a porta 5195, onde não há
+     nada; herdando essa, o Publisher tentava falar com um endereço morto e a
+     bateria inteira caía com "Falha de rede ao falar com a plataforma". O
+     defeito estava aqui, não no produto — mas só apareceu quando as duas
+     rodaram em sequência no CI. */
+  const conta = (await api("contas")).find((c) => c.plataforma === "site" && c.nome === "Site Falso");
   checar("site cadastrado como conta", !!conta);
+  if (!conta) {
+    console.log("\n  sem a conta do site não há o que testar — parando aqui.\n");
+    process.exit(1);
+  }
 
   const teste = await api(`contas/${conta.id}/verificar`, { metodo: "POST" });
   checar("ping assinado é aceito pelo site", teste.ok === true, JSON.stringify(teste));
@@ -111,6 +123,14 @@ const assinar = (segredo, ts, corpo) =>
   const p = espiar.posts[0];
   checar("site gravou a matéria", !!p, JSON.stringify(espiar).slice(0, 200));
   checar("site rodou o Publicar", espiar.publicou === 1, "publicou " + espiar.publicou);
+  /* Sem matéria gravada, todas as checagens abaixo leem propriedades de
+     `undefined` e a bateria MORRE com TypeError — escondendo, atrás de um
+     rastro de pilha, as falhas que ela já tinha nomeado. Suíte que morre não
+     reprova: ela deixa de contar. */
+  if (!p) {
+    console.log("\n  o site não gravou nada — as checagens do conteúdo não têm o que ler.\n");
+    process.exit(1);
+  }
   checar("título chegou íntegro", p.title === "Matéria de teste do LA Publisher", p.title);
   checar("slug gerado", p.slug === "materia-de-teste-do-la-publisher", p.slug);
   checar("resumo virou texto puro para a listagem", p.excerpt === "Resumo formatado.", p.excerpt);
